@@ -1,0 +1,754 @@
+---
+title: "Project pike"
+author: "TR"
+date: '2022-09-02'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r LUNG cleanup for GLMM, include=FALSE, eval=FALSE}
+# Script to read in and clean up LUNG data tables
+
+setwd("C:/Users/timor/Nextcloud2/Timo/BODDENHECHT/Chapter 2/Stats/Niche analysis")
+
+rm(list = ls())
+
+# Read in data------------------------------------------------------------------
+read_excel_allsheets <- function(filename, tibble = FALSE) {
+    # I prefer straight data.frames
+    # but if you like tidyverse tibbles (the default with read_excel)
+    # then just pass tibble = TRUE
+    sheets <- readxl::excel_sheets(filename)
+    x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X))
+    if(!tibble) x <- lapply(x, as.data.frame)
+    names(x) <- sheets
+    x
+}
+
+LUNGdata_coast_list <- read_excel_allsheets("Data/LUNG-Daten_all_coast_2005-2020.xlsx")
+LUNGdata_rivers_list <-read_excel_allsheets("Data/LUNG-Daten_all_rivers_2005-2020.xlsx")
+
+# into one dataframe
+
+LUNGdata_coast <- bind_rows(LUNGdata_coast_list)
+LUNGdata_rivers <- bind_rows(LUNGdata_rivers_list)
+
+#Prepare data frames
+
+LUNGdata_coast_clean <- LUNGdata_coast %>%
+  transmute(id = MstNr,
+            name = Messstelle,
+            water_body = Gewässer,
+            datetime = DATUM_Uhrzeit,
+            parameter = Param_kurz,
+            parameter2 = Parameter,
+            value = WERT,
+            unit = Einheit,
+            depth = TIEFE,
+            Lat = HW_GEO,
+            Long = RW_GEO,
+            turbidity = SICHTTIEFE,
+            type = "Coast")
+
+LUNGdata_rivers <- LUNGdata_rivers %>%
+  transmute(id = MS_NR,
+            name = Messstelle,
+            water_body = Gewässer,
+            datetime = DATUM_Uhrzeit,
+            parameter = Param_kurz,
+            parameter2 = Parameter,
+            value = WERT,
+            unit = Einheit,
+            depth = NA,
+            HW = HW,
+            RW = RW,
+            turbidity = NA)
+
+# Convert from Gauß-Krueger to WGS84 coordinates--------------------------------
+LUNGdata_rivers_GK <- data.frame(cbind(LUNGdata_rivers, "X_GK" = LUNGdata_rivers$RW, 
+                                 "Y_GK" = LUNGdata_rivers$HW))
+
+coordinates(LUNGdata_rivers_GK) <- c("X_GK", "Y_GK")
+proj4string(LUNGdata_rivers_GK) <- CRS("+init=epsg:5650")
+LUNGdata_rivers_WGS84 <- spTransform(LUNGdata_rivers_GK, CRS("+init=epsg:4326"))
+
+LUNGdata_rivers_WGS84 <- as.data.frame(LUNGdata_rivers_WGS84)
+
+LUNGdata_rivers_clean <- LUNGdata_rivers_WGS84%>%
+  transmute(id = id,
+            name = name,
+            water_body = water_body,
+            datetime = datetime,
+            parameter = parameter,
+            parameter2 = parameter2,
+            value = value,
+            unit = unit,
+            depth = depth,
+            Lat = Y_GK,
+            Long = X_GK,
+            turbidity = turbidity, 
+            type = "Freshwater")
+
+# Filter for variables of interest before converting to wide and join-----------
+LUNG_sal_temp_coast <- LUNGdata_coast_clean %>%
+  filter(parameter == "W-T"|parameter2=="Wassertemperatur"|
+           parameter == "SAL"|parameter2 == "Salzgehalt"|
+           parameter == "P"|parameter2 == "Phophor, gesamt")%>%
+  transmute(id = id,
+            name = name,
+            waterbody = water_body,
+            date = lubridate::as_date(parse_date_time(datetime, orders = "ymd_HMS")),
+            day = lubridate::day(parse_date_time(datetime, orders = "ymd_HMS")),
+            month = lubridate::month(parse_date_time(datetime, orders = "ymd_HMS")),
+            year = lubridate::year(parse_date_time(datetime, orders = "ymd_HMS")),
+            parameter = parameter,
+            value = value,
+            depth = depth,
+            Lat = Lat,
+            Long = Long,
+            turbidity = turbidity,
+            measurement = "LUNG",
+            type = type)
+
+LUNG_sal_temp_rivers <- LUNGdata_rivers_clean %>%
+  filter(parameter == "W-T"|parameter2=="Wassertemperatur"|
+           parameter == "SAL"|parameter2 == "Salzgehalt"|
+           parameter == "P"|parameter2 == "Phophor, gesamt")%>%
+  transmute(id = id,
+            name = name,
+            waterbody = water_body,
+            date = lubridate::as_date(parse_date_time(datetime, orders = "ymd_HMS")),
+            day = lubridate::day(parse_date_time(datetime, orders = "ymd_HMS")),
+            month = lubridate::month(parse_date_time(datetime, orders = "ymd_HMS")),
+            year = lubridate::year(parse_date_time(datetime, orders = "ymd_HMS")),
+            parameter = parameter,
+            value = value,
+            depth = depth,
+            Lat = Lat,
+            Long = Long,
+            turbidity = turbidity,
+            measurement = "LUNG",
+            type = type)
+
+#insert NAs for later means
+LUNG_sal_temp_rivers <- LUNG_sal_temp_rivers%>%
+  group_by(name, year, month, parameter)%>%
+  summarize(id = id,
+            name = name,
+            waterbody = waterbody,
+            month = month,
+            year = year,
+            parameter = parameter,
+            value = mean(value, na.rm = T),
+            Lat = Lat,
+            Long = Long,
+            turbidity=turbidity,
+            measurement = measurement,
+            type = type)%>%
+  ungroup()%>%
+  distinct()%>%
+  pivot_wider(names_from = month, values_from = value)
+
+LUNG_sal_temp_rivers <- LUNG_sal_temp_rivers%>%
+  pivot_longer(cols = c(11:22), names_to = "month",
+               values_to = "value", values_drop_na = F)
+
+# remove double rows before converting to wide
+LUNG_sal_temp_coast <- LUNG_sal_temp_coast[-c(11296, 11298, 563, 564),]
+
+LUNG_sal_temp_coast <- LUNG_sal_temp_coast%>%
+  group_by(name, year, month, parameter)%>%
+  summarize(id = id,
+            name = name,
+            waterbody = waterbody,
+            month = month,
+            year = year,
+            parameter = parameter,
+            value = mean(value, na.rm = T),
+            Lat = Lat,
+            Long = Long,
+            turbidity=turbidity,
+            measurement = measurement,
+            type = type)%>%
+  ungroup()%>%
+  distinct()%>%
+  pivot_wider(names_from = month, values_from = value)
+
+LUNG_sal_temp_coast <- LUNG_sal_temp_coast%>%
+  pivot_longer(cols = c(11:22), names_to = "month",
+               values_to = "value", values_drop_na = F)
+
+# convert to wide
+LUNG_sal_temp_coast <- spread(LUNG_sal_temp_coast, parameter, value)
+head(LUNG_sal_temp_coast)
+LUNG_sal_temp_rivers <- spread(LUNG_sal_temp_rivers, parameter, value)
+head(LUNG_sal_temp_rivers)
+LUNG_sal_temp_rivers$SAL <- 0
+
+LUNGdata_all <- rbind(LUNG_sal_temp_coast, LUNG_sal_temp_rivers)
+names(LUNGdata_all)[13] <- paste("WT")
+
+# Add ID numbers
+LUNGdata_all <- LUNGdata_all %>%
+  transmute(id = case_when(name %in% "AW1 Trockenort" ~"0111030108",
+                           waterbody %in% "Graben 44" ~"0103070022",
+                           name %in% "DB6 Barth oe." ~"0103050603",
+                           name %in% "DB2 Sundische Wiese" ~"0103050208",
+                           name %in% "DB1 Pramort" ~"0103050101",
+                           name %in% "GS Gellenstrom Hiddensee w." ~"0103070503",   
+                           name %in% "RB2 Vitte oe." ~"0112190202",
+                           name %in% "RB3 Bugspitze s." ~"0112190309",
+                           name %in% "RB1 Schaprode w." ~"0112400185",
+                           name %in% "KB90 Fahrwasser I.Libitz w." ~"0103059085",
+                           name %in% "S66 Stralsund" ~"0109016609",
+                           name %in% "RB6 Wittower Faehre oe." ~"0112280603",
+                           name %in% "RB9 Glowe sw." ~"0112390909",
+                           name %in% "RB10 Lietzow n." ~"0112391004",
+                           name %in% "RB15 Buschvitz oe." ~"0112391500",
+                           name %in% "GB3 Daenische Wiek n." ~"0105010306",
+                           name %in% "GB2 I.Vilm s." ~"0105010285",
+                           name %in% "GB19 Zentralbereich" ~"0105011907",
+                           name %in% "GB7 Struck" ~"0105010701",
+                           name %in% "GB10 Ruden s." ~"0111021001",
+                           name %in% "O133 suedl. Greifsw. Oie" ~"0111071308",
+                           name %in% "P20 Peenemuende s." ~"0111032085",
+                           name %in% "P42 Wolgast s." ~"0111034208",
+                           name %in% "P48 Lassan" ~"0111034806",
+                           TRUE ~ id),
+            name = name,
+            waterbody = waterbody,
+            #date = date,
+            #day = day,
+            month = month,
+            year = year,
+            #depth = depth,
+            Lat = Lat,
+            Long = Long,
+            turbidity = turbidity,
+            measurement = measurement,
+            type = type,
+            SAL = SAL,
+            WT = WT,
+            P=P)
+
+#Must be zero:
+unique(ifelse(is.na(LUNGdata_all$id)==T, 1, 0))
+
+# join in 2021 data-------------------------------------------------------------
+
+LUNGdata_coast_21 <- read.delim("Data/LUNG-Daten_all_coast_2021.txt", header = T, 
+                                stringsAsFactors = F)
+#clean
+LUNGdata_coast_21 <- LUNGdata_coast_21 %>%
+  transmute(id = paste0(0, PN.Stellennr.),
+            date = lubridate::as_date(parse_date_time(Probenahmedatum, orders = "dmy_HM")),
+            day = lubridate::day(parse_date_time(Probenahmedatum, orders = "dmy_HM")),
+            month = lubridate::month(parse_date_time(Probenahmedatum, orders = "dmy_HM")),
+            year = lubridate::year(parse_date_time(Probenahmedatum, orders = "dmy_HM")),
+            depth = case_when(Tiefeninformation %in% "Grundnähe" ~ "bottom",
+                              TRUE ~ "surface"),
+            parameter = Parameter,
+            value = Endergebnis)%>%
+  filter(parameter == "Wassertemperatur"|
+           parameter == "Salzgehalt"|
+           parameter == "Gesamt P"|
+           parameter == "Sichttiefe")
+
+#insert NAs
+LUNGdata_coast_21 <- LUNGdata_coast_21%>%
+  group_by(id, year, month, parameter)%>%
+  summarize(id = id,
+            month = month,
+            year = year,
+            parameter = parameter,
+            value = mean(as.numeric(value), na.rm = T))%>%
+  ungroup()%>%
+  distinct()%>%
+  pivot_wider(names_from = month, values_from = value)
+
+LUNGdata_coast_21 <- LUNGdata_coast_21%>%
+  pivot_longer(cols = c(4:15), names_to = "month",
+               values_to = "value", values_drop_na = F)
+
+LUNGdata_coast_21 <- rbind(LUNGdata_coast_21[LUNGdata_coast_21$year!=2022,],
+                           na.omit(LUNGdata_coast_21[LUNGdata_coast_21$year==2022,]))
+
+
+#wide
+LUNGdata_coast_21 <- spread(LUNGdata_coast_21, parameter, value)
+head(LUNGdata_coast_21)
+
+LUNGdata_coast_21 <- LUNGdata_coast_21 %>%
+  transmute(id = id,
+            #date = date,
+            #day = day,
+            month = month,
+            year = year,
+            #depth = depth,
+            SAL = Salzgehalt,
+            WT = Wassertemperatur,
+            P_total=`Gesamt P`,
+            trbidity=Sichttiefe)
+
+# for loop to complement rows
+IDstation <- unique(LUNGdata_coast_21$id)
+df <- data.frame()
+for (i in 1:length(IDstation)) {
+  nm <- na.omit(unlist(ifelse(LUNGdata_coast_21$id == IDstation[i], 
+              first(LUNGdata_all[which(LUNGdata_all$id == IDstation[i]), 
+                                 "name"]), NA)))
+  wb <- na.omit(unlist(ifelse(LUNGdata_coast_21$id == IDstation[i], 
+              first(LUNGdata_all[which(LUNGdata_all$id == IDstation[i]),
+                                 "waterbody"]), NA)))
+  Lat <- na.omit(unlist(ifelse(LUNGdata_coast_21$id == IDstation[i], 
+              first(LUNGdata_all[which(LUNGdata_all$id == IDstation[i]), "Lat"]), NA)))
+  Long <- na.omit(unlist(ifelse(LUNGdata_coast_21$id == IDstation[i], 
+              first(LUNGdata_all[which(LUNGdata_all$id == IDstation[i]), 
+                                 "Long"]), NA)))
+  df <- rbind(df, data.frame(nm, wb, Lat, Long))
+}
+
+#add missing columns
+LUNGdata_coast_21 <- cbind(LUNGdata_coast_21, df)
+#LUNGdata_coast_21$turbidity <- NA
+LUNGdata_coast_21$type <- "Coast"
+LUNGdata_coast_21$measurement <- "LUNG"
+
+LUNGdata_coast_21 <- LUNGdata_coast_21 %>%
+  transmute(id = id,
+            name = nm,
+            waterbody = wb,
+            #date = date,
+            #day = day,
+            month = month,
+            year = year,
+            #depth = depth,
+            Lat = Lat,
+            Long = Long,
+            turbidity = trbidity,
+            measurement = measurement,
+            type = type,
+            SAL = SAL,
+            WT = WT,
+            P=P_total)
+
+LUNGdata_all <- data.frame(rbind(LUNGdata_all, LUNGdata_coast_21))
+
+LUNGdata_all <- LUNGdata_all%>%
+  transmute(waterbody = case_when(name %in% "AW1 Trockenort" ~"P",
+                                  name %in% "DB1 Pramort" ~"BAT",
+                                  name %in% "DB10 Bodstedt n." ~"BoB",
+                                  name %in% "DB16 Saal nw." ~"SaB",
+                                  name %in% "DB2 Sundische Wiese" ~"BAT",
+                                  name %in% "DB6 Barth oe." ~"BAT",
+                                  name %in% "GB10 Ruden s." ~"GB",
+                                  name %in% "GB19 Zentralbereich" ~"GB",
+                                  name %in% "GB2 I.Vilm s." ~"GB",
+                                  name %in% "GB3 Daenische Wiek n." ~"GB",
+                                  name %in% "GB7 Struck" ~"GB",
+                                  name %in% "GS Gellenstrom Hiddensee w." 
+                                  ~"Baltic",
+                                  name %in% "KB90 Fahrwasser I.Libitz w." ~"WRB",
+                                  name %in% "O133 suedl. Greifsw. Oie" ~"Baltic",
+                                  name %in% "P20 Peenemuende s." ~"P",
+                                  name %in% "P42 Wolgast s." ~"P",
+                                  name %in% "P48 Lassan" ~"P",
+                                  name %in% "RB1 Schaprode w." ~"WRB",
+                                  name %in% "RB10 Lietzow n." ~"NRB",
+                                  name %in% "RB15 Buschvitz oe." ~"KJB",
+                                  name %in% "RB2 Vitte oe." ~"WRB",
+                                  name %in% "RB3 Bugspitze s." ~"NRB",
+                                  name %in% "RB6 Wittower Faehre oe." ~"NRB",
+                                  name %in% "RB9 Glowe sw."~"NRB",
+                                  name %in% "S66 Stralsund" ~"WRB",
+                                  name %in% "Barth" ~"Barthe",
+                                  name %in% "Klein Damitz" ~"Bandycksgraben",
+                                  name %in% "Wolgast" ~"Ziese",
+                                  name %in% "Neuendorf" ~"Sehrowbach",
+                                  name %in% "Kemnitz" ~"Ziese",
+                                  TRUE~name),
+            id = id,
+            name = name,
+            month = month,
+            year = year,
+            Lat = Lat,
+            Long = Long,
+            turbidity = turbidity,
+            measurement = measurement,
+            type = type,
+            SAL = SAL,
+            WT = WT,
+            P=P)
+
+Lungdata <- LUNGdata_all%>%
+  group_by(waterbody, year)%>%
+  summarise(type=type,
+            turbidity=mean(turbidity, na.rm=T),
+            SAL=mean(SAL, na.rm=T),
+            WT=mean(WT, na.rm=T),
+            P=mean(P, na.rm=T))%>%
+  distinct()
+
+# save file
+write.table(Lungdata, 
+            file = "C:/Users/timor/Nextcloud2/Timo/BODDENHECHT/Courses/GLMM/Data/LUNGdata.txt", 
+            sep = "\t", dec = ".", row.names = F)
+
+
+```
+
+```{r shape data for GLMM, include=FALSE, eval=FALSE}
+
+setwd("C:/Users/timor/Nextcloud2/Timo/BODDENHECHT/Chapter 2/Stats/Niche analysis")
+
+rm(list = ls())
+
+Lungdata <- read.delim("Data/LUNGdata.txt", header = T, stringsAsFactors = F, sep = "\t", dec = ".")
+
+pikedat_B <- read.delim("Data/Otoliths/Growthdata_Bodden-cluster.txt", 
+                        sep = "\t", dec = ".", header = T, stringsAsFactors = F)
+
+pikedat_F <- read.delim("Data/Otoliths/Growthdata_Freshwater-cluster.txt", 
+                        sep = "\t", dec = ".", header = T, stringsAsFactors = F)
+
+#Prep MLE
+pikedata_B <- pikedat_B%>%
+  transmute(ID=as.character(ID),
+            area=area,
+            capt=capt,
+            clust=as.factor(paste0("S_",clust)),
+            age=as.integer(age),
+            cohort=as.integer(cohort),
+            weight=weigth,
+            TL=as.numeric(TL),
+            sex=as.factor(sex),
+            lifeyear=factor(i, levels = c(1:13), labels = c(1:13)),
+            year=year,
+            inc=as.numeric(increment),
+            rad=as.numeric(rad))
+
+pikedata_F <- pikedat_F%>%
+  transmute(ID=as.character(ID),
+            area=area,
+            capt=capt,
+            clust=as.factor(paste0("F_",clust)),
+            age=as.integer(age),
+            cohort=as.integer(cohort),
+            weight=weigth,
+            TL=as.numeric(TL),
+            sex=as.factor(sex),
+            lifeyear=factor(i, levels = c(1:13), labels = c(1:13)),
+            year=year,
+            inc=as.numeric(increment),
+            rad=as.numeric(rad))
+
+pikedata <- rbind(pikedata_B, pikedata_F)
+
+oto_lowres <- read.delim("Data/Otoliths/Oto_LA-to-d18O_interpolation.txt",
+                         header = T, dec = ".", sep = "\t",
+                         stringsAsFactors = F)
+
+oto_years <- oto_lowres%>%
+  group_by(ID,year)%>%
+  summarise(ID=ID,
+            lifeyear=as.factor(year),
+            d18O_mean=mean(d18O),
+            res_mean=mean(res),
+            Sr_mean=mean(Sr),
+            d18O_min=min(d18O),
+            res_min=min(res),
+            Sr_min=min(Sr),
+            d18O_max=max(d18O),
+            res_max=max(res),
+            Sr_max=max(Sr))
+
+pikedata <- pikedata%>%inner_join(oto_years, by=c("ID", "lifeyear"))%>%
+  transmute(ID=ID,
+            waterbody=area,
+            capt=capt,
+            clust=clust,
+            age=age,
+            cohort=cohort,
+            weight=weight,
+            TL=TL,
+            sex=sex,
+            lifeyear=lifeyear,
+            year=year.x,
+            inc=inc,
+            rad=rad,
+            d18O_mean=d18O_mean,
+            d18O_max=d18O_max,
+            d18O_min=d18O_min,
+            res_mean=res_mean,
+            res_max=res_max,
+            res_min=res_min,
+            Sr_mean=Sr_mean,
+            Sr_max=Sr_max,
+            Sr_min=Sr_min)%>%
+  drop_na(inc,rad,year)%>%
+  distinct()
+
+pikedata <- pikedata%>%left_join(Lungdata, by=c("waterbody", "year"))
+
+write.table(pikedata, 
+            file = "Data/Pikedata.txt", 
+            sep = "\t", dec = ".", row.names = F)
+```
+
+```{r load and check data, include=FALSE, eval=FALSE}
+pikedata <- read.delim("Data/Pikedata.txt", header = T, stringsAsFactors = F,
+                       sep = "\t", dec = ".")
+```
+
+```{r packages needed, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(lme4)
+library(nlme)
+library(lmerTest)
+library(emmeans)
+library(MuMIn)
+library(visreg)
+library(car)
+library(sjPlot)
+library(knitr)
+```
+
+## Our data
+
+```{r project start, message=FALSE, warning=FALSE, echo=FALSE}
+rm(list = ls())
+
+pikes <- read.delim("Data/Pikedata.txt", header = T, stringsAsFactors = F,
+                    sep = "\t", dec = ".")
+# head(pikes)
+# tail(pikes)
+# str(pikes)
+
+pikes2 <- pikes%>%
+  transmute(ID=ID,
+            waterbody=factor(waterbody),
+            clust=as.factor(clust),
+            sex=as.factor(sex),
+            lifeyear=lifeyear,
+            inc=inc,
+            res_mean=as.numeric(scale(res_mean)),
+            Sr_mean=as.numeric(scale(Sr_mean)),
+            visibility=as.numeric(scale(turbidity)),
+            Sal=as.numeric(scale(SAL)),
+            WT=as.numeric(scale(WT)),
+            P=as.numeric(scale(P)))
+
+str(pikes2)
+```
+
+\newpage
+
+## Our first model
+$log10(Inc) \sim Age+cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc/ID)$
+
+\newpage
+
+## Some data exploration
+
+```{r Exploration, echo=TRUE, fig.height=6, fig.width=8}
+#Exploration
+
+par(mfrow=c(1,2))
+dotchart(pikes2$inc, color = pikes2$clust, main = "Color = Ecotype(Cluster)")
+dotchart(pikes2$inc, color = pikes2$sex, main = "Color = Sex")
+```
+
+\newpage
+
+```{r Exploration 2, echo=TRUE, fig.height=5, fig.width=8}
+par(mfrow=c(3,2))
+boxplot(pikes2$inc~pikes2$lifeyear, ylab ="Growth increment", xlab = "Age")
+boxplot(pikes2$inc~pikes2$clust, ylab ="Growth increment", xlab = "Ecotype")
+boxplot(pikes2$inc~pikes2$sex, ylab ="Growth increment", xlab = "Sex")
+plot(pikes2$inc~pikes2$res_mean, ylab ="Growth increment", xlab = "d18O")
+plot(pikes2$inc~pikes2$Sr_mean, ylab ="Growth increment", xlab = "Sr")
+plot(0, xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
+```
+
+\newpage
+
+```{r Exploration 3, echo=TRUE, fig.height=5, fig.width=8}
+par(mfrow = c(2,2))
+hist(pikes2$inc, main = "", xlab = "Increment (um)")
+hist(pikes2$res_mean, main = "", xlab = "d18O ratio")
+hist(pikes2$Sr_mean, main = "", xlab = "Sr concentration")
+plot(0, xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
+
+```
+
+\newpage
+
+## Performance problems of our model
+
+$log10(Inc) \sim Age+cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc/ID)$
+
+```{r exclude random effect of ID}
+#Run model
+pikemodel.1 <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
+                        Sr_mean+sex+(1|waterbody/ID), 
+                      REML = T, data = pikes2)
+summary(pikemodel.1)
+
+pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+lifeyear*clust+
+                        Sr_mean+sex+(1|waterbody), 
+                      REML = F, data = pikes2)
+summary(pikemodel.1.0)
+
+pikemodel.1.1 <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
+                        Sr_mean+sex+(1|waterbody), 
+                      REML = F, data = pikes2)
+
+anova(pikemodel.1.0, pikemodel.1.1)
+```
+## New model
+$log10(Inc) \sim Age+cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc)$
+
+```{r table exclusion, out.width="200%", dpi=300, echo=FALSE, message=FALSE}
+include_graphics("Figures/Table2.jpg")
+```
+
+```{r table random effects, out.width="80%", include=FALSE}
+piketable <- data.frame(Predictors=c(names(model.matrix(pikemodel.1.0)[1,])),
+                        Estimates=round(fixef(pikemodel.1.0),2),
+                        CI1=confint(pikemodel.1.0)[3:14,1],
+                        CI2=confint(pikemodel.1.0)[3:14,2],
+                        p=NA)
+model.matrix(pikemodel.1.0)
+
+```
+
+\newpage
+
+```{r Look at variance inflation factors, echo=TRUE}
+#Look at variance inflation factors
+library(car)
+
+pike.vif <- vif(pikemodel.1)
+
+barplot(pike.vif[,3], main = "VIF values", horiz = F, col = "darkgreen", ylim = c(0,6),
+        las = 2)
+abline(h = 5, lwd = 3, lty = 2, col="red")
+```
+
+## Random effects not significant
+```{r test effects, echo=TRUE}
+#Test model components
+#Test random effects
+rand(pikemodel.1.0)
+```
+
+\newpage
+## Age is significant
+```{r test effects 2, echo=TRUE}
+#Remove age quadratic term
+pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
+                        Sr_mean+sex+(1|waterbody), 
+                      REML = F, data = pikes2)
+
+pikemodel.lifeyear <- lmer(log10(inc)~lifeyear+clust+
+                        res_mean+Sr_mean+sex+(1|waterbody), 
+                      REML = F, data = pikes2)
+anova(pikemodel.1.0, pikemodel.lifeyear)
+#age is significant
+# etc...
+```
+## Cluster is not significant
+```{r test effects 3, echo=TRUE}
+#Remove cluster
+pikemodel.cluster <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+
+                        Sr_mean+sex+(1|waterbody), 
+                      REML = F, data = pikes2)
+anova(pikemodel.1.0, pikemodel.cluster)
+#Cluster not significant
+```
+## Relative d18O is significant
+```{r test effects 4, echo=TRUE}
+#Remove d18O
+pikemodel.nores <- lmer(log10(inc)~lifeyear+I(lifeyear^2)+clust+
+                        Sr_mean+sex+(1|waterbody), 
+                      REML = F, data = pikes2)
+anova(pikemodel.1.0, pikemodel.nores)
+#relative d18O sigificant
+```
+## Relative Sr is not significant
+```{r test effects 5, echo=TRUE}
+#Remove Sr
+pikemodel.noSr <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
+                        sex+(1|waterbody), 
+                      REML = F, data = pikes2)
+anova(pikemodel.1.0, pikemodel.noSr)
+#Sr not significant
+```
+## Sex is significant
+```{r test effects 6, echo=TRUE}
+#Remove sex
+pikemodel.nosex <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
+                        Sr_mean+(1|waterbody), 
+                      REML = F, data = pikes2)
+anova(pikemodel.1.0, pikemodel.nosex)
+#sex is significant
+```
+
+\newpage
+
+## Results
+```{r table, out.width="120%", dpi=300, echo=FALSE, message=FALSE}
+include_graphics("Figures/Table.jpg")
+```
+
+## Model validation
+```{r model validation, echo=FALSE}
+#validation
+pikemodel.final <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
+                        Sr_mean+sex+(1|waterbody), 
+                      REML = T, data = pikes2)
+
+pikes2$resid <- resid(pikemodel.final)
+
+plot(pikemodel.final, xlab = "Fitted", ylab = "Residuals")
+hist(pikes2$resid, main = "", xlab = "Residuals")
+
+qqnorm(resid(pikemodel.final))
+qqline(resid(pikemodel.final))
+
+
+plot(pikes2$resid~pikes2$clust, ylab = "Residuals", xlab = "Cluster", las = 2)
+plot(pikes2$resid~pikes2$sex, ylab = "Residuals", xlab = "Sex")
+plot(pikes2$resid~pikes2$lifeyear, ylab = "Residuals", xlab = "Age")
+plot(pikes2$resid~pikes2$res_mean, ylab = "Residuals", xlab = "d18O")
+plot(pikes2$resid~pikes2$Sr_mean, ylab = "Residuals", xlab = "Sr concentration")
+```
+
+\newpage
+
+```{r effect figure, echo=TRUE}
+#factorize temperature
+pikes2$agefact <- ifelse(pikes2$lifeyear<3, "juvenile", 
+                         ifelse(pikes2$lifeyear>2&pikes2$lifeyear<7, "adult",
+                                ifelse(pikes2$lifeyear>6, "trophy", NA)))
+
+ggplot(pikes2, aes(res_mean, inc, color=agefact, fill=agefact))+
+  geom_point(size=.8)+geom_smooth(method = "lm")+
+  labs(x="d18O scaled", y="increment (um)")+
+  #scale_color_viridis_d(option = "E")+
+  #scale_y_continuous(breaks = seq(1.75,3,0.25), 
+                     #labels = round(c(10^seq(1.75,3,0.25)),0))+
+  theme_minimal()
+
+ggplot(pikes2, aes(Sr_mean, inc, color=clust))+
+  geom_point(size=.8)+geom_smooth(method = "lm", se=F)+
+  labs(x="Sr scaled", y="increment (um)")+
+  #scale_color_viridis_d(option = "E")+
+  #scale_y_continuous(breaks = seq(1.75,3,0.25), 
+                     #labels = round(c(10^seq(1.75,3,0.25)),0))+
+  theme_minimal()
+```
