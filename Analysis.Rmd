@@ -9,35 +9,36 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Setup and cleanup
+
+```{r packages, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(lme4)
+library(nlme)
+library(lmerTest)
+library(emmeans)
+library(MuMIn)
+library(visreg)
+library(car)
+library(sjPlot)
+library(knitr)
+library(car)
+```
+
 ```{r LUNG cleanup for GLMM, include=FALSE, eval=FALSE}
 # Script to read in and clean up LUNG data tables
-
-setwd("C:/Users/timor/Nextcloud2/Timo/BODDENHECHT/Chapter 2/Stats/Niche analysis")
-
 rm(list = ls())
 
-# Read in data------------------------------------------------------------------
-read_excel_allsheets <- function(filename, tibble = FALSE) {
-    # I prefer straight data.frames
-    # but if you like tidyverse tibbles (the default with read_excel)
-    # then just pass tibble = TRUE
-    sheets <- readxl::excel_sheets(filename)
-    x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X))
-    if(!tibble) x <- lapply(x, as.data.frame)
-    names(x) <- sheets
-    x
-}
-
-LUNGdata_coast_list <- read_excel_allsheets("Data/LUNG-Daten_all_coast_2005-2020.xlsx")
-LUNGdata_rivers_list <-read_excel_allsheets("Data/LUNG-Daten_all_rivers_2005-2020.xlsx")
-
-# into one dataframe
-
-LUNGdata_coast <- bind_rows(LUNGdata_coast_list)
-LUNGdata_rivers <- bind_rows(LUNGdata_rivers_list)
+# Read in data
+LUNGdata_coast <- read.delim("Data/Environment/Lungdata_all_coast_2005-2020.txt",
+                             header = T, stringsAsFactors = F, 
+                             sep = "\t", dec = ".")
+LUNGdata_rivers <- read.delim("Data/Environment/Lungdata_all_rivers_2005-2020.txt",
+                             header = T, stringsAsFactors = F, 
+                             sep = "\t", dec = ".")
 
 #Prepare data frames
-
 LUNGdata_coast_clean <- LUNGdata_coast %>%
   transmute(id = MstNr,
             name = Messstelle,
@@ -68,8 +69,8 @@ LUNGdata_rivers <- LUNGdata_rivers %>%
             turbidity = NA)
 
 # Convert from Gauß-Krueger to WGS84 coordinates--------------------------------
-LUNGdata_rivers_GK <- data.frame(cbind(LUNGdata_rivers, "X_GK" = LUNGdata_rivers$RW, 
-                                 "Y_GK" = LUNGdata_rivers$HW))
+LUNGdata_rivers_GK <- data.frame(cbind(LUNGdata_rivers, "X_GK" = LUNGdata_rivers$RW,
+                                       "Y_GK" = LUNGdata_rivers$HW))
 
 coordinates(LUNGdata_rivers_GK) <- c("X_GK", "Y_GK")
 proj4string(LUNGdata_rivers_GK) <- CRS("+init=epsg:5650")
@@ -239,8 +240,9 @@ unique(ifelse(is.na(LUNGdata_all$id)==T, 1, 0))
 
 # join in 2021 data-------------------------------------------------------------
 
-LUNGdata_coast_21 <- read.delim("Data/LUNG-Daten_all_coast_2021.txt", header = T, 
-                                stringsAsFactors = F)
+LUNGdata_coast_21 <- read.delim("Data/Environment/LUNG-Daten_all_coast_2021.txt",
+                                header = T, stringsAsFactors = F, 
+                                sep = "\t", dec = ".")
 #clean
 LUNGdata_coast_21 <- LUNGdata_coast_21 %>%
   transmute(id = paste0(0, PN.Stellennr.),
@@ -394,27 +396,26 @@ Lungdata <- LUNGdata_all%>%
 
 # save file
 write.table(Lungdata, 
-            file = "C:/Users/timor/Nextcloud2/Timo/BODDENHECHT/Courses/GLMM/Data/LUNGdata.txt", 
+            file = "Data/LUNGdata.txt", 
             sep = "\t", dec = ".", row.names = F)
 
 
 ```
 
-```{r shape data for GLMM, include=FALSE, eval=FALSE}
-
-setwd("C:/Users/timor/Nextcloud2/Timo/BODDENHECHT/Chapter 2/Stats/Niche analysis")
-
+```{r shape data, include=FALSE, eval=FALSE}
+#Script to read cleaned environmental data and combine it with pike data
 rm(list = ls())
 
-Lungdata <- read.delim("Data/LUNGdata.txt", header = T, stringsAsFactors = F, sep = "\t", dec = ".")
+Lungdata <- read.delim("Data/Environment/LUNGdata.txt", header = T, 
+                       stringsAsFactors = F, sep = "\t", dec = ".")
 
-pikedat_B <- read.delim("Data/Otoliths/Growthdata_Bodden-cluster.txt", 
+pikedat_B <- read.delim("Data/Pike/Growthdata_Bodden-cluster.txt", 
                         sep = "\t", dec = ".", header = T, stringsAsFactors = F)
 
-pikedat_F <- read.delim("Data/Otoliths/Growthdata_Freshwater-cluster.txt", 
+pikedat_F <- read.delim("Data/Pike/Growthdata_Freshwater-cluster.txt", 
                         sep = "\t", dec = ".", header = T, stringsAsFactors = F)
 
-#Prep MLE
+#Clean up data frames
 pikedata_B <- pikedat_B%>%
   transmute(ID=as.character(ID),
             area=area,
@@ -444,10 +445,10 @@ pikedata_F <- pikedat_F%>%
             year=year,
             inc=as.numeric(increment),
             rad=as.numeric(rad))
-
+#Bind together
 pikedata <- rbind(pikedata_B, pikedata_F)
 
-oto_lowres <- read.delim("Data/Otoliths/Oto_LA-to-d18O_interpolation.txt",
+oto_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt",
                          header = T, dec = ".", sep = "\t",
                          stringsAsFactors = F)
 
@@ -498,36 +499,18 @@ write.table(pikedata,
             sep = "\t", dec = ".", row.names = F)
 ```
 
-```{r load and check data, include=FALSE, eval=FALSE}
-pikedata <- read.delim("Data/Pikedata.txt", header = T, stringsAsFactors = F,
-                       sep = "\t", dec = ".")
-```
+## Prepare data for modelling
 
-```{r packages needed, include=FALSE}
-library(tidyverse)
-library(ggplot2)
-library(lme4)
-library(nlme)
-library(lmerTest)
-library(emmeans)
-library(MuMIn)
-library(visreg)
-library(car)
-library(sjPlot)
-library(knitr)
-```
-
-## Our data
-
-```{r project start, message=FALSE, warning=FALSE, echo=FALSE}
+```{r project start, include=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
 rm(list = ls())
 
-pikes <- read.delim("Data/Pikedata.txt", header = T, stringsAsFactors = F,
+pikes <- read.delim("Data/Pike/Pikedata.txt", header = T, stringsAsFactors = F,
                     sep = "\t", dec = ".")
-# head(pikes)
-# tail(pikes)
-# str(pikes)
+head(pikes)
+tail(pikes)
+str(pikes)
 
+#Prepare data frame with factors and scale+center element data
 pikes2 <- pikes%>%
   transmute(ID=ID,
             waterbody=factor(waterbody),
@@ -541,20 +524,13 @@ pikes2 <- pikes%>%
             Sal=as.numeric(scale(SAL)),
             WT=as.numeric(scale(WT)),
             P=as.numeric(scale(P)))
-
+#Check
 str(pikes2)
 ```
 
-\newpage
+## Data exploration
 
-## Our first model
-$log10(Inc) \sim Age+cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc/ID)$
-
-\newpage
-
-## Some data exploration
-
-```{r Exploration, echo=TRUE, fig.height=6, fig.width=8}
+```{r Exploration, include=FALSE, echo=FALSE, fig.height=6, fig.width=8}
 #Exploration
 
 par(mfrow=c(1,2))
@@ -562,9 +538,7 @@ dotchart(pikes2$inc, color = pikes2$clust, main = "Color = Ecotype(Cluster)")
 dotchart(pikes2$inc, color = pikes2$sex, main = "Color = Sex")
 ```
 
-\newpage
-
-```{r Exploration 2, echo=TRUE, fig.height=5, fig.width=8}
+```{r Exploration, include=FALSE, echo=FALSE, fig.height=5, fig.width=8}
 par(mfrow=c(3,2))
 boxplot(pikes2$inc~pikes2$lifeyear, ylab ="Growth increment", xlab = "Age")
 boxplot(pikes2$inc~pikes2$clust, ylab ="Growth increment", xlab = "Ecotype")
@@ -574,9 +548,7 @@ plot(pikes2$inc~pikes2$Sr_mean, ylab ="Growth increment", xlab = "Sr")
 plot(0, xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
 ```
 
-\newpage
-
-```{r Exploration 3, echo=TRUE, fig.height=5, fig.width=8}
+```{r Exploration, include=FALSE, echo=FALSE, fig.height=5, fig.width=8}
 par(mfrow = c(2,2))
 hist(pikes2$inc, main = "", xlab = "Increment (um)")
 hist(pikes2$res_mean, main = "", xlab = "d18O ratio")
@@ -585,54 +557,31 @@ plot(0, xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
 
 ```
 
-\newpage
-
-## Performance problems of our model
-
-$log10(Inc) \sim Age+cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc/ID)$
+## Initial model
+$log10(Inc) \sim Age+Age*cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc/ID)$
 
 ```{r exclude random effect of ID}
 #Run model
-pikemodel.1 <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
+pikemodel.1 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
                         Sr_mean+sex+(1|waterbody/ID), 
                       REML = T, data = pikes2)
 summary(pikemodel.1)
-
-pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+lifeyear*clust+
-                        Sr_mean+sex+(1|waterbody), 
-                      REML = F, data = pikes2)
+#Random effects cannot e estimated as too low variance
+#Model runs properly when excluding ID:
+pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
+                      Sr_mean+sex+(1|waterbody), 
+                      REML = T, data = pikes2)
 summary(pikemodel.1.0)
-
-pikemodel.1.1 <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
-                        Sr_mean+sex+(1|waterbody), 
-                      REML = F, data = pikes2)
-
-anova(pikemodel.1.0, pikemodel.1.1)
 ```
+ 
 ## New model
-$log10(Inc) \sim Age+cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc)$
-
-```{r table exclusion, out.width="200%", dpi=300, echo=FALSE, message=FALSE}
-include_graphics("Figures/Table2.jpg")
-```
-
-```{r table random effects, out.width="80%", include=FALSE}
-piketable <- data.frame(Predictors=c(names(model.matrix(pikemodel.1.0)[1,])),
-                        Estimates=round(fixef(pikemodel.1.0),2),
-                        CI1=confint(pikemodel.1.0)[3:14,1],
-                        CI2=confint(pikemodel.1.0)[3:14,2],
-                        p=NA)
-model.matrix(pikemodel.1.0)
-
-```
-
-\newpage
+$log10(Inc) \sim Age+Age*cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc)$
 
 ```{r Look at variance inflation factors, echo=TRUE}
 #Look at variance inflation factors
-library(car)
 
-pike.vif <- vif(pikemodel.1)
+
+pike.vif <- vif(pikemodel.1.0)
 
 barplot(pike.vif[,3], main = "VIF values", horiz = F, col = "darkgreen", ylim = c(0,6),
         las = 2)
@@ -661,14 +610,13 @@ anova(pikemodel.1.0, pikemodel.lifeyear)
 #age is significant
 # etc...
 ```
-## Cluster is not significant
-```{r test effects 3, echo=TRUE}
-#Remove cluster
-pikemodel.cluster <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+
-                        Sr_mean+sex+(1|waterbody), 
+## Age*cluster is significant
+```{r test cluster effects}
+pikemodel.1.1 <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
+                      Sr_mean+sex+(1|waterbody), 
                       REML = F, data = pikes2)
-anova(pikemodel.1.0, pikemodel.cluster)
-#Cluster not significant
+
+anova(pikemodel.1.0, pikemodel.1.1)
 ```
 ## Relative d18O is significant
 ```{r test effects 4, echo=TRUE}
@@ -744,10 +692,18 @@ ggplot(pikes2, aes(res_mean, inc, color=agefact, fill=agefact))+
                      #labels = round(c(10^seq(1.75,3,0.25)),0))+
   theme_minimal()
 
+ggplot(pikes2, aes(lifeyear, inc, color=clust))+
+  geom_point(size=.8)+geom_smooth(method = "lm", se=F)+
+  labs(x="Sr scaled", y="increment (um)")+
+  scale_color_viridis_d()+
+  #scale_y_continuous(breaks = seq(1.75,3,0.25), 
+                     #labels = round(c(10^seq(1.75,3,0.25)),0))+
+  theme_minimal()
+
 ggplot(pikes2, aes(Sr_mean, inc, color=clust))+
   geom_point(size=.8)+geom_smooth(method = "lm", se=F)+
   labs(x="Sr scaled", y="increment (um)")+
-  #scale_color_viridis_d(option = "E")+
+  scale_color_viridis_d()+
   #scale_y_continuous(breaks = seq(1.75,3,0.25), 
                      #labels = round(c(10^seq(1.75,3,0.25)),0))+
   theme_minimal()
