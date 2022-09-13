@@ -24,6 +24,7 @@ library(car)
 library(sjPlot)
 library(knitr)
 library(car)
+library(ggpubr)
 ```
 
 ```{r LUNG cleanup for GLMM, include=FALSE, eval=FALSE}
@@ -589,7 +590,7 @@ abline(h = 5, lwd = 3, lty = 2, col="red")
 ```
 
 ## Random effects not significant
-```{r test effects, echo=TRUE}
+```{r test random effects, echo=TRUE}
 #Test model components
 #Test random effects
 rand(pikemodel.1.0)
@@ -597,67 +598,55 @@ rand(pikemodel.1.0)
 
 \newpage
 ## Age is significant
-```{r test effects 2, echo=TRUE}
+```{r test effects age, echo=TRUE}
 #Remove age quadratic term
-pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
-                        Sr_mean+sex+(1|waterbody), 
-                      REML = F, data = pikes2)
-
-pikemodel.lifeyear <- lmer(log10(inc)~lifeyear+clust+
-                        res_mean+Sr_mean+sex+(1|waterbody), 
-                      REML = F, data = pikes2)
-anova(pikemodel.1.0, pikemodel.lifeyear)
-#age is significant
-# etc...
-```
-## Age*cluster is significant
-```{r test cluster effects}
-pikemodel.1.1 <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
+pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
                       Sr_mean+sex+(1|waterbody), 
                       REML = F, data = pikes2)
 
-anova(pikemodel.1.0, pikemodel.1.1)
+pikemodel.noage <- update(pikemodel.1.0, ~. -I(lifeyear^2))
+
+anova(pikemodel.1.0, pikemodel.noage)
+#age is significant
+```
+## Age*cluster is significant
+```{r test cluster effects}
+pikemodel.noclust <- update(pikemodel.1.0, ~. -lifeyear*clust)
+
+anova(pikemodel.1.0, pikemodel.noclust)
 ```
 ## Relative d18O is significant
-```{r test effects 4, echo=TRUE}
+```{r test effects d18O, echo=TRUE}
 #Remove d18O
-pikemodel.nores <- lmer(log10(inc)~lifeyear+I(lifeyear^2)+clust+
-                        Sr_mean+sex+(1|waterbody), 
-                      REML = F, data = pikes2)
+pikemodel.nores <- update(pikemodel.1.0, ~. -lifeyear*res_mean)
 anova(pikemodel.1.0, pikemodel.nores)
-#relative d18O sigificant
+#relative d18O significant
 ```
 ## Relative Sr is not significant
-```{r test effects 5, echo=TRUE}
+```{r test effects Sr, echo=TRUE}
 #Remove Sr
-pikemodel.noSr <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
-                        sex+(1|waterbody), 
-                      REML = F, data = pikes2)
+pikemodel.noSr <- update(pikemodel.1.0, ~. -Sr_mean)
 anova(pikemodel.1.0, pikemodel.noSr)
 #Sr not significant
 ```
 ## Sex is significant
-```{r test effects 6, echo=TRUE}
+```{r test effects sex, echo=TRUE}
 #Remove sex
-pikemodel.nosex <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
-                        Sr_mean+(1|waterbody), 
-                      REML = F, data = pikes2)
+pikemodel.nosex <- update(pikemodel.1.0, ~. -sex)
 anova(pikemodel.1.0, pikemodel.nosex)
 #sex is significant
 ```
 
-\newpage
-
 ## Results
 ```{r table, out.width="120%", dpi=300, echo=FALSE, message=FALSE}
-include_graphics("Figures/Table.jpg")
+tab_model(pikemodel.final)
 ```
 
 ## Model validation
 ```{r model validation, echo=FALSE}
 #validation
-pikemodel.final <- lmer(log10(inc)~lifeyear*res_mean+I(lifeyear^2)+clust+
-                        Sr_mean+sex+(1|waterbody), 
+pikemodel.final <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
+                      Sr_mean+sex+(1|waterbody), 
                       REML = T, data = pikes2)
 
 pikes2$resid <- resid(pikemodel.final)
@@ -674,37 +663,86 @@ plot(pikes2$resid~pikes2$sex, ylab = "Residuals", xlab = "Sex")
 plot(pikes2$resid~pikes2$lifeyear, ylab = "Residuals", xlab = "Age")
 plot(pikes2$resid~pikes2$res_mean, ylab = "Residuals", xlab = "d18O")
 plot(pikes2$resid~pikes2$Sr_mean, ylab = "Residuals", xlab = "Sr concentration")
+
+r.squaredGLMM(pikemodel.final)
 ```
 
-\newpage
 
-```{r effect figure, echo=TRUE}
+```{r temp & clust effect figure}
 #factorize temperature
-pikes2$agefact <- ifelse(pikes2$lifeyear<3, "juvenile", 
-                         ifelse(pikes2$lifeyear>2&pikes2$lifeyear<7, "adult",
-                                ifelse(pikes2$lifeyear>6, "trophy", NA)))
+pikes2$agefact <- ifelse(pikes2$lifeyear<3, 2, 
+                         ifelse(pikes2$lifeyear>2&pikes2$lifeyear<7, 1,
+                                ifelse(pikes2$lifeyear>6, 3, NA)))
 
-ggplot(pikes2, aes(res_mean, inc, color=agefact, fill=agefact))+
-  geom_point(size=.8)+geom_smooth(method = "lm")+
-  labs(x="d18O scaled", y="increment (um)")+
-  #scale_color_viridis_d(option = "E")+
-  #scale_y_continuous(breaks = seq(1.75,3,0.25), 
-                     #labels = round(c(10^seq(1.75,3,0.25)),0))+
-  theme_minimal()
+pikes2$agefact2 <- factor(pikes2$agefact,levels = c(2,1,3),
+                                            labels = c("juvenile", "adult", "trophy"))
 
-ggplot(pikes2, aes(lifeyear, inc, color=clust))+
-  geom_point(size=.8)+geom_smooth(method = "lm", se=F)+
-  labs(x="Sr scaled", y="increment (um)")+
+#rename clusters
+pikes3 <- pikes2%>%
+  mutate(clust2=case_when(clust=="F_HighS"~3,
+                          clust=="F_IntS"~3,
+                          clust=="F_LowS"~1,
+                          clust=="S_HighS"~2,
+                          clust=="S_IntS"~4,
+                          clust=="S_LowS"~4))
+pikes3$clust <- factor(pikes3$clust2,
+                       levels = c(1,2,3,4),
+                       labels = c("Freshwater resident/stable temperature", 
+                                  "Brackish resident/stable temperature",
+                                  "Anadromous/thermal shift",
+                                  "Semianadromous/thermal shift"))
+
+mypallette <- viridis::viridis(4, direction = 1)
+
+#Temperature effect
+Temp <- ggplot(pikes2, aes(res_mean, inc, color=agefact2))+
+  geom_point(size=.5)+
+  stat_smooth(method = "lm", fill="gray", fullrange = T, lwd=.8)+
+  labs(x=expression(bold("scaled"~delta^18*"O"~("Sr-corrected, VPDB \u2030"))), 
+       y=expression(bold("increment"~(mu*"m"))),
+       color="ageclass")+
   scale_color_viridis_d()+
-  #scale_y_continuous(breaks = seq(1.75,3,0.25), 
-                     #labels = round(c(10^seq(1.75,3,0.25)),0))+
-  theme_minimal()
+  theme_classic()+
+  theme(panel.grid.major = element_line(),
+        legend.position = c(.803,.825),
+        legend.background = element_blank(),
+        legend.box.background = element_rect(),
+        axis.line = element_line(size = .5, colour = "black", linetype = 1),
+        axis.ticks = element_line(size = .5, colour = "black"),
+        axis.text = element_text(size = 10, colour = "black"),
+        axis.title.x = element_text(size = 10, face = "bold"),
+        axis.title.y = element_text(size = 10, face = "bold"),
+        legend.text = element_text(size = 5),
+        legend.title = element_text(size = 10, face = "bold"),
+        legend.key.size = unit(.8,"line"))
 
-ggplot(pikes2, aes(Sr_mean, inc, color=clust))+
-  geom_point(size=.8)+geom_smooth(method = "lm", se=F)+
-  labs(x="Sr scaled", y="increment (um)")+
-  scale_color_viridis_d()+
-  #scale_y_continuous(breaks = seq(1.75,3,0.25), 
-                     #labels = round(c(10^seq(1.75,3,0.25)),0))+
-  theme_minimal()
+#Cluster effect
+Clust <- ggplot(pikes3[pikes$lifeyear<=10,], aes(factor(lifeyear), inc, color=clust))+
+  geom_boxplot(lwd=.3, outlier.size = .5)+
+  labs(x="Age (years)", y=expression(bold("increment"~(mu*"m"))), color="ecotype")+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7","8","9","10"))+
+  scale_color_manual(breaks = c("Freshwater resident/stable temperature", 
+                                  "Brackish resident/stable temperature",
+                                  "Anadromous/thermal shift",
+                                  "Semianadromous/thermal shift"),
+                     values = mypallette)+
+  theme_classic()+
+  theme(panel.grid.major = element_line(),
+        legend.position = c(.715,.79),
+        legend.background = element_blank(),
+        legend.box.background = element_rect(),
+        axis.line = element_line(size = .5, colour = "black", linetype = 1),
+        axis.ticks = element_line(size = .5, colour = "black"),
+        axis.text = element_text(size = 10, colour = "black"),
+        axis.text.y = element_blank(),
+        axis.title.x = element_text(size = 10, face = "bold"),
+        axis.title.y = element_blank(),
+        legend.text = element_text(size = 5),
+        legend.title = element_text(size = 10, face = "bold"),
+        legend.key.size = unit(.8,"line"))
+
+png(filename = "Figures/Interaction_effects_growth.png", 
+    width = 4500, height = 1800, res = 600)
+ggarrange(Temp, Clust, align = "h")
+dev.off()
 ```
