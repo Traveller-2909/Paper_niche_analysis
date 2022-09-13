@@ -9,8 +9,6 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Setup and cleanup
-
 ```{r packages, include=FALSE}
 library(tidyverse)
 library(ggplot2)
@@ -26,6 +24,312 @@ library(knitr)
 library(car)
 library(ggpubr)
 ```
+
+## preparation of Sr and d18O data
+```{r marry d18O data to Sr, include=FALSE, eval=FALSE}
+#Read in LA-ICPMS and SIMS data
+rm(list = ls())
+
+LA <- read.delim("Data/Pike/pike_data_LA-ICPMS_years_with_core.txt", 
+                 header = T, stringsAsFactors = F, sep = "\t", dec = ".")
+
+d18O <- read.delim("Data/Pike/pike_data_d18O_years.txt", header = T,
+                stringsAsFactors = F, sep = "\t", dec = ".")
+
+#Clean up data & assign capture locations to main areas
+#Trace element data
+LA <- LA%>%
+  filter(LA_dist>=50)%>%
+  transmute(ID = ID,
+            age=age,
+            capt = area,
+            area = case_when(area %in% "Peene" ~ "Freshwater",
+                             area %in% "Barthe" ~ "Freshwater",
+                             area %in% "NHG" ~ "Freshwater",
+                             area %in% "Sehrowbach" ~ "Freshwater",
+                             area %in% "Bandycksgraben" ~ "Freshwater",
+                             area %in% "Ziese" ~ "Freshwater",
+                             area %in% "KB" ~ "WRB",
+                             area %in% "SB" ~ "WRB",
+                             area %in% "WB" ~ "NRB",
+                             area %in% "BEG" ~ "NRB", 
+                             area %in% "KJB" ~ "NRB",
+                             area %in% "GJB" ~ "NRB",
+                             area %in% "GB" ~ "GB",
+                             area %in% "KD" ~ "control",
+                             TRUE ~ "NA"),
+            Sr = Sr,
+            Na = Na,
+            Mg = Mg,
+            Ba = Ba,
+            Mn = Mn,
+            LA_dist = LA_dist,
+            year=year)
+
+#d18O data
+d18O <- d18O%>%
+  transmute(ID = ID,
+            age=age,
+            capt = area,
+            area = case_when(area %in% "Peene" ~ "Freshwater",
+                             area %in% "Barthe" ~ "Freshwater",
+                             area %in% "NHG" ~ "Freshwater",
+                             area %in% "Sehrowbach" ~ "Freshwater",
+                             area %in% "Bandycksgraben" ~ "Freshwater",
+                             area %in% "Ziese" ~ "Freshwater",
+                             area %in% "KB" ~ "WRB",
+                             area %in% "SB" ~ "WRB",
+                             area %in% "WB" ~ "NRB",
+                             area %in% "BEG" ~ "NRB", 
+                             area %in% "KJB" ~ "NRB",
+                             area %in% "GJB" ~ "NRB",
+                             area %in% "GB" ~ "Marine",
+                             area %in% "KD" ~ "Control",
+                             TRUE ~ "NA"),
+            d18O = d18O,
+            sims_dist = sims_dist,
+            year=year)
+
+LA <- LA %>% drop_na()
+
+#Smooth trace element data to get rid of extreme values
+LA_smooth <- LA%>%group_by(ID)%>%
+  transmute(ID=ID,
+            age=age,
+            capt=capt,
+            area=area,
+            Sr=as.numeric(zoo::rollmean(Sr, k=9, fill=NA, align = "left")),
+            Na=as.numeric(zoo::rollmean(Na, k=9, fill=NA, align = "left")),
+            Mg=as.numeric(zoo::rollmean(Mg, k=9, fill=NA, align = "left")),
+            Ba=as.numeric(zoo::rollmean(Ba, k=9, fill=NA, align = "left")),
+            Mn=as.numeric(zoo::rollmean(Mn, k=9, fill=NA, align = "left")),
+            LA_dist=as.numeric(LA_dist),
+            year=year)
+
+#Order data for joining
+d18O <- d18O[order(d18O$ID),]
+LA <- LA[order(LA$ID),]
+LA_smooth <- LA_smooth[order(LA_smooth$ID),]
+LA_smooth <- data.frame(LA_smooth)
+
+#reinterpolate Sr (higher spatial resolution) to d18O distances (lower spatial resolution) for joining
+IDOto <- unique(d18O$ID)
+dfE <- data.frame()
+for (i in 1:length(IDOto)) {
+  Sr <- data.frame(approx(LA_smooth[which(LA_smooth$ID==IDOto[i]),"LA_dist"],
+              LA_smooth[which(LA_smooth$ID==IDOto[i]),"Sr"],
+              n = length(d18O[which(d18O$ID==IDOto[i]),"sims_dist"]),
+              rule = 1, method = "linear", ties = "ordered"))
+  Na <- data.frame(approx(LA_smooth[which(LA_smooth$ID==IDOto[i]),"LA_dist"],
+              LA_smooth[which(LA_smooth$ID==IDOto[i]),"Na"],
+              n = length(d18O[which(d18O$ID==IDOto[i]),"sims_dist"]),
+              rule = 1, method = "linear", ties = "ordered"))
+  Mg <- data.frame(approx(LA_smooth[which(LA_smooth$ID==IDOto[i]),"LA_dist"],
+              LA_smooth[which(LA_smooth$ID==IDOto[i]),"Mg"],
+              n = length(d18O[which(d18O$ID==IDOto[i]),"sims_dist"]),
+              rule = 1, method = "linear", ties = "ordered"))
+  Ba <- data.frame(approx(LA_smooth[which(LA_smooth$ID==IDOto[i]),"LA_dist"],
+              LA_smooth[which(LA_smooth$ID==IDOto[i]),"Ba"],
+              n = length(d18O[which(d18O$ID==IDOto[i]),"sims_dist"]),
+              rule = 1, method = "linear", ties = "ordered"))
+  Mn <- data.frame(approx(LA_smooth[which(LA_smooth$ID==IDOto[i]),"LA_dist"],
+              LA_smooth[which(LA_smooth$ID==IDOto[i]),"Mn"],
+              n = length(d18O[which(d18O$ID==IDOto[i]),"sims_dist"]),
+              rule = 1, method = "linear", ties = "ordered"))
+  df <- cbind(Sr=Sr[,2], Na=Na[,2], Mg=Mg[,2], Ba=Ba[,2], Mn=Mn[,2])
+  dfE <- rbind(dfE,df)
+}
+
+otoint_lowres <- cbind(d18O, dfE)
+```
+
+```{r covariance d18O and Sr, include=FALSE}
+#clean up
+Oto_lowres <- otoint_lowres%>%
+  filter(capt!="KD")%>%
+  filter(ID!="BH-01908")%>%
+  transmute(ID=ID,
+            capt=capt,
+            area=area,
+            dist=sims_dist,
+            Sr=Sr,
+            d18O=d18O)%>%
+  drop_na()
+
+#plot high signal fish
+Testfish1 <- Oto_lowres%>%filter(ID=="BH-90946")
+Testfish2 <- Oto_lowres%>%filter(ID=="BH-91050")
+Testfish3 <- Oto_lowres%>%filter(ID=="BH-90928")
+Testfish4 <- Oto_lowres%>%filter(ID=="BH-01882")
+Testfish5 <- Oto_lowres%>%filter(ID=="BH-01868")
+Testfish6 <- Oto_lowres%>%filter(ID=="BH-01585")
+
+P1 <- ggplot(Testfish1,aes(x=Sr, y=d18O))+
+  geom_point()+
+  labs(x="Sr/Ca (ppt)", y="d18O (permill)", 
+       title="BH-90946, freshwater, likely anadromous")+
+  ylim(-11,-3)+xlim(0,0.007)+
+  theme_minimal()
+P2 <- ggplot(Testfish2,aes(x=Sr, y=d18O))+
+  geom_point()+
+  labs(x="Sr/Ca (ppt)", y="d18O (permill)",
+       title = "BH-91050, freshwater, likely anadromous")+
+  ylim(-11,-3)+xlim(0,0.007)+
+  theme_minimal()
+P3 <- ggplot(Testfish3,aes(x=Sr, y=d18O))+
+  geom_point()+
+  labs(x="Sr/Ca (ppt)", y="d18O (permill)",
+       title = "BH-90928, freshwater, likely anadromous")+
+  ylim(-11,-3)+xlim(0,0.007)+
+  theme_minimal()
+P4 <- ggplot(Testfish4,aes(x=Sr, y=d18O))+
+  geom_point()+
+  labs(x="Sr/Ca (ppt)", y="d18O (permill)",
+       title = "BH-01882, Bodden, likely resident")+
+  ylim(-11,-3)+xlim(0,0.007)+
+  theme_minimal()
+P5 <- ggplot(Testfish5,aes(x=Sr, y=d18O))+
+  geom_point()+
+  labs(x="Sr/Ca (ppt)", y="d18O (permill)",
+       title = "BH-01868, Bodden, likely resident")+
+  ylim(-11,-3)+xlim(0,0.007)+
+  theme_minimal()
+P6 <- ggplot(Testfish6,aes(x=Sr, y=d18O))+
+  geom_point()+
+  labs(x="Sr/Ca (ppt)", y="d18O (permill)",
+       title = "BH-01585, Bodden, likely resident")+
+  ylim(-11,-3)+xlim(0,0.007)+
+  theme_minimal()
+ggarrange(P1,P2,P3,P4,P5,P6)
+
+png(filename = "Figures/Correlation_d18O~Sr.png", 
+    width = 3000, height = 1800, res = 600)
+ggplot(Oto_lowres,aes(x=Sr*1000, y=d18O))+
+  geom_point()+
+  scale_x_continuous(breaks = seq(0,8,1))+
+  scale_y_continuous(breaks = seq(-15,0,1))+
+  labs(x="Sr/Ca (mg/g)", 
+       y=expression(bold(delta^18*"O"~("VPDB \u2030"))),
+       title=expression(bold("Correlation of intraotolith Sr and"~delta^18*"O")))+
+  stat_smooth(method = "lm", fullrange = T)+
+  theme_classic()+
+    theme(panel.grid.major = element_line(),
+          axis.line = element_line(size = .5, colour = "black", linetype = 1),
+          axis.ticks = element_line(size = .5, colour = "black"),
+          axis.text = element_text(size = 10, colour = "black"),
+          axis.title.x = element_text(size = 10, face = "bold"),
+          axis.title.y = element_text(size = 10, face = "bold"),
+          legend.text = element_text(size = 5),
+          legend.title = element_text(size = 10, face = "bold"),
+          plot.title = element_text(size = 15, face = "bold", hjust = .5))
+dev.off()
+```
+
+```{r add corrected d18O to data, include=FALSE, eval=FALSE}
+#Get residuals from d18O ~ Sr
+subset_KD <- subset(otoint_lowres, capt=="KD")
+subset_KD$res <- NA
+otoint_lowres <- otoint_lowres%>%drop_na()%>%filter(capt!="KD")%>%filter(ID!="BH-01908")
+
+lm0 <- lm(d18O~1, data = otoint_lowres)
+lm1 <- lm(d18O~Sr, data = otoint_lowres)
+anova(lm0, lm1)
+summary(lm1)
+
+otoint_lowres$res <- lm1$residuals
+otoint_lowres <- rbind(otoint_lowres, subset_KD)
+
+#check for pattern retention
+plot(otoint_lowres[otoint_lowres$ID=="BH-01889",]$sims_dist, otoint_lowres[otoint_lowres$ID=="BH-01889",]$res, type="l")
+```
+
+```{r average d18O residuals over years, include=FALSE, eval=FALSE}
+#get d18O points per year to average over annual signal
+otoint_lowres$year <- as.factor(otoint_lowres$year)
+
+yearmean <- otoint_lowres%>%group_by(ID,year)%>%summarise(n=n())
+mean(yearmean$n)
+#mean of 7.6 so smooth with 7 or 8
+
+otoint_lowres <- otoint_lowres%>%
+  group_by(ID)%>%
+  transmute(ID=ID,
+            age=age,
+            capt=capt,
+            area=area,
+            d18O=zoo::rollmean(d18O, k=7, fill = NA, align = "left"),
+            res=zoo::rollmean(res, k=7, fill = NA, align = "left"),
+            Sr=Sr,
+            Na=Na,
+            Mg=Mg,
+            Ba=Ba,
+            Mn=Mn,
+            year=year,
+            dist=sims_dist)%>%
+  drop_na()
+
+#check for pattern smoothness
+plot(otoint_lowres[otoint_lowres$ID=="BH-01855",]$dist, otoint_lowres[otoint_lowres$ID=="BH-01855",]$d18O, type="l")
+
+#Save data
+write.table(otoint_lowres, "Data/Oto_LA-to-d18O_interpolation.txt", 
+            row.names = F,dec = ".", sep = "\t")
+```
+
+## Lifelong niche on population level
+```{r lifelong niche, include=FALSE}
+#script to form annual means of elemental data for clustering and increment analysis
+otoint_lifehist <- otoint_lowres%>%
+  transmute(ID=ID,
+            age=age,
+            capt=capt,
+            area=case_when(area=="WRB"~"Lagoon",
+                           area=="NRB"~"Lagoon",
+                           area=="Marine"~"Lagoon",
+                           area=="Freshwater"~"Tributary"),
+            d18O=d18O,
+            d18O_res=res,
+            Sr=Sr,
+            year=year,
+            dist=dist)
+
+# Plot lifelong increase in d18O --> colder the older
+mypallette <- viridis::viridis(4, direction = 1)
+
+ggplot(otoint_lifehist, aes(year, d18O_res))+
+  geom_boxplot(aes(color = area), width = 0.5)+
+  scale_x_discrete(limits = factor(1:10))+
+  labs(x="Age (years)",
+       y=expression(bold("Sr-corrected"~delta^18*"O"~("VPDB \u2030"))))+
+  theme_classic()+
+  scale_color_viridis_d(direction = -1, begin = 0, end = 0.7)+
+  theme(panel.grid.major = element_line(),
+        legend.position = "none",
+        legend.background = element_blank(),
+        legend.box.background = element_rect(),
+        axis.line = element_line(size = .5, colour = "black", linetype = 1),
+        axis.ticks = element_line(size = .5, colour = "black"),
+        axis.text = element_text(size = 10, colour = "black"),
+        axis.title.x = element_text(size = 10, face = "bold"),
+        axis.title.y = element_text(size = 10, face = "bold"),
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 10, face = "bold"),
+        legend.key.size = unit(.8,"line"))
+
+#Here you left, you dodo, now make the other figure
+
+#Lifelong increase in Sr/Ca --> saltier the older
+B <- ggplot(Alldata[Alldata$waterbody!="KD",], aes(year, Sr))+
+  geom_boxplot(aes(color = area), width = 0.5, show.legend = F)+
+  scale_x_discrete(limits = factor(1:10))+
+  theme(legend.position = "bottom")+
+  theme_minimal()
+
+AB <- ggarrange(A, B, ncol = 2, nrow = 1, labels = c("A", "B"), common.legend = TRUE,
+                legend = "bottom")
+```
+
+## Setup and cleanup of data for mixed models
 
 ```{r LUNG cleanup for GLMM, include=FALSE, eval=FALSE}
 # Script to read in and clean up LUNG data tables
@@ -679,6 +983,7 @@ plot(pikes2$resid~pikes2$Sr_mean, ylab = "Residuals", xlab = "Sr concentration")
 r.squaredGLMM(pikemodel.final)
 ```
 
+## Figure main effects
 
 ```{r temp & clust effect figure}
 #factorize temperature
@@ -753,8 +1058,10 @@ Clust <- ggplot(pikes3[pikes$lifeyear<=10,], aes(factor(lifeyear), inc, color=cl
         legend.title = element_text(size = 10, face = "bold"),
         legend.key.size = unit(.8,"line"))
 
+Fig <- ggarrange(Temp, Clust, align = "h")
+
 png(filename = "Figures/Interaction_effects_growth.png", 
     width = 4500, height = 1800, res = 600)
-ggarrange(Temp, Clust, align = "h")
+annotate_figure(plot, top = text_grob("Effects of relative lifelong temperature and ecotype on pike growth", color = "black", face = "bold", size = 15))
 dev.off()
 ```
