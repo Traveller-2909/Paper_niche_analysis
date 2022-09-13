@@ -594,6 +594,8 @@ abline(h = 5, lwd = 3, lty = 2, col="red")
 #Test model components
 #Test random effects
 rand(pikemodel.1.0)
+
+summary(pikemodel.final)
 ```
 
 \newpage
@@ -604,42 +606,52 @@ pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
                       Sr_mean+sex+(1|waterbody), 
                       REML = F, data = pikes2)
 
-pikemodel.noage <- update(pikemodel.1.0, ~. -I(lifeyear^2))
+pikemodel.noage <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+
+                      Sr_mean+sex+(1|waterbody), 
+                      REML = F, data = pikes2)
 
 anova(pikemodel.1.0, pikemodel.noage)
 #age is significant
 ```
 ## Age*cluster is significant
 ```{r test cluster effects}
-pikemodel.noclust <- update(pikemodel.1.0, ~. -lifeyear*clust)
-
+pikemodel.noclust <- lmer(log10(inc)~lifeyear*res_mean+clust+I(lifeyear^2)+
+                      Sr_mean+sex+(1|waterbody), 
+                      REML = F, data = pikes2)
 anova(pikemodel.1.0, pikemodel.noclust)
 ```
 ## Relative d18O is significant
 ```{r test effects d18O, echo=TRUE}
 #Remove d18O
-pikemodel.nores <- update(pikemodel.1.0, ~. -lifeyear*res_mean)
+pikemodel.nores <- lmer(log10(inc)~lifeyear*clust+res_mean+I(lifeyear^2)+
+                      Sr_mean+sex+(1|waterbody), 
+                      REML = F, data = pikes2)
 anova(pikemodel.1.0, pikemodel.nores)
 #relative d18O significant
 ```
 ## Relative Sr is not significant
 ```{r test effects Sr, echo=TRUE}
 #Remove Sr
-pikemodel.noSr <- update(pikemodel.1.0, ~. -Sr_mean)
+pikemodel.noSr <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
+                      sex+(1|waterbody), 
+                      REML = F, data = pikes2)
 anova(pikemodel.1.0, pikemodel.noSr)
 #Sr not significant
 ```
 ## Sex is significant
 ```{r test effects sex, echo=TRUE}
 #Remove sex
-pikemodel.nosex <- update(pikemodel.1.0, ~. -sex)
+pikemodel.nosex <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
+                      Sr_mean+(1|waterbody), 
+                      REML = F, data = pikes2)
 anova(pikemodel.1.0, pikemodel.nosex)
 #sex is significant
 ```
 
 ## Results
 ```{r table, out.width="120%", dpi=300, echo=FALSE, message=FALSE}
-tab_model(pikemodel.final)
+summary(pikemodel.final)
+tab_model(pikemodel.final, show.fstat = T, show.loglik = T, digits.re = 20)
 ```
 
 ## Model validation
