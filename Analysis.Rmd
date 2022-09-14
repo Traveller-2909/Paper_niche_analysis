@@ -23,6 +23,7 @@ library(sjPlot)
 library(knitr)
 library(car)
 library(ggpubr)
+library(mclust)
 ```
 
 ## preparation of Sr and d18O data
@@ -350,6 +351,253 @@ ggarrange(d18O, SrCa, ncol = 2, nrow = 1, labels = c("A", "B"), common.legend = 
                 legend = "bottom")
 dev.off()
 ```
+
+
+## Model-based preclustering
+```{r preclustering prep, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+rm(list = ls())
+#read in data
+# oto_highres <- read.delim("Data/Otoliths/Oto_d18O-to-LA_interpolation.txt",
+#                          header = T, dec = ".", sep = "\t",
+#                          stringsAsFactors = F)
+oto_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation_KD.txt",
+                         header = T, dec = ".", sep = "\t",
+                         stringsAsFactors = F) #This is not low-res, you need to change that!!!
+
+#Clustering step 1: model based clustering
+#Form means
+Elemeans <- oto_lowres%>%
+  group_by(ID)%>%
+  na.omit()%>%
+  summarise(ID=ID,
+            area=case_when(area=="Marine"~"Lagoon",
+                           area=="Ana"~"Tributary",
+                           area=="Freshwater"~"Tributary",
+                           area=="control"~"Control lake"),
+            Sr=mean(Sr),
+            Na=mean(Na),
+            Mg=mean(Mg),
+            Ba=mean(Ba),
+            Mn=mean(Mn),
+            d18O=mean(d18O))%>%
+  distinct()
+
+#Scale means
+Elemeans[,3:8] <- scale(Elemeans[,3:8])
+```
+
+```{r preclustering, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+#Visual examination of distinction potential
+X <- data.matrix(Elemeans[,3:8])
+class <- factor(Elemeans$area)
+table(class)
+col <- mclust.options("classPlotColors")[1:3]
+
+clp <- clPairs(X, class, lower.panel=NULL, gap=0, symbols = c(16,15,17),
+               colors = adjustcolor(col, alpha.f = 0.5))
+clPairsLegend(x = 0.1, y = 0.3, class = clp$class, col = col, 
+              pch = clp$pch, title = "Capture location")
+
+#model-based clustering with the most promising predictors (Sr & d18O)
+fit <- Mclust(Elemeans[,c(3,8)])
+
+#Evaluation plots
+par(mar=c(5,5,1,1))
+plot(fit, what = "BIC", xlab="Number of clusters", 
+     legendArgs=list(x="topright", ncol=2, cex=0.5, inset=0.01),
+     cex.lab=3)
+
+par(mar=c(5,6,1,1))
+plot(fit, what = "classification", 
+     ylab=expression(delta^18*"O (normalized)"),
+     xlab="Sr/Ca (normalized)", cex.lab=2, cex.axis=2, cex=2)
+
+plot(fit, what = "uncertainty")
+plot(fit, what = "density")
+summary(fit, parameters=T)
+
+#Cluster again with best method
+fit2 <- Mclust(Elemeans[,c(3,8)], G=3, modelNames = "VVI")
+
+#Assign cluster to data
+Elemeans$clust <- as.factor(fit2$classification)
+```
+
+```{r plot preclustering results, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+#Plot cluster results
+mypallette <- viridis::viridis(3, direction = 1)
+
+png(filename = "Figures/Preclustering_results.png", 
+    width = 3000, height = 1800, res = 600)
+ggplot(Elemeans, aes(d18O, Sr, color=area, shape=clust))+
+  labs(x=expression(bold(delta^18*"O (scaled)")), y="Sr/Ca (scaled)",
+       shape="Cluster",
+       title = "Preclustering results (VVI with 3 groups)")+
+  geom_point(size=1)+
+  theme_classic()+
+  scale_color_manual(name="Capture location", 
+                     breaks = c("Lagoon", "Tributary", "Control lake"),
+                     values = mypallette)+
+  theme(panel.grid.major = element_line(),
+        axis.title = element_text(size = 10, face = "bold"), 
+        axis.text = element_text(size = 10, colour = "black"),
+        #legend.position = c(.85,.65),
+        legend.text = element_text(size = 5),
+        legend.title = element_text(size = , face = "bold"),
+        legend.key.size = unit(.5,"line"),
+        legend.background = element_blank(),
+        legend.box.background = element_rect(),
+        plot.title = element_text(size = 15, face = "bold"))
+dev.off()
+
+#Assign clusters to timeseries
+ClustID <- Elemeans[,c(1,9)]
+```
+
+```{r subset data according to preclustering results, include=FALSE, eval=FALSE}
+oto_lowres <- oto_lowres%>%
+  inner_join(ClustID, by = "ID")%>%
+  group_by(ID)%>%
+  na.omit()%>%
+  transmute(ID=ID,
+            capt=capt,
+            area=area,
+            d18O=d18O,
+            Sr=Sr,
+            Na=Na,
+            Mg=Mg,
+            Ba=Ba,
+            Mn=Mn,
+            clust=clust,
+            dist=LA_dist)
+
+#Test mean length of transect (data points)
+summary(count(oto_lowres, "ID"))
+
+#Function to reinterpolate an element to a specified length
+interpol <- function(series, length, element){
+  ids <- NULL
+  values <- NULL
+  
+  IDOto <- unique(series$ID)
+  
+  for (i in 1:length(IDOto)) {
+    id <- rep(IDOto[i], length.out=length)
+    value <- approx(series[which(series$ID==IDOto[i]), element],
+                      method = "linear", n=length, rule = 2)[2]
+    ids <- c(ids, id)
+    values <- unlist(c(values, value))
+    }
+  
+  data.frame(ID=ids, value=values)
+  
+}
+
+#Test function
+Srall <- interpol(series = oto_highres, length = 250, element = "Sr")
+d18Oall <- interpol(series = oto_highres, length = 250, element = "d18O")
+
+Srd18O <- cbind(Srall, d18Oall[,2])
+colnames(Srd18O) <- c("ID", "Sr", "d18O")
+
+
+#compare pattern retention
+par(mfrow=c(1,2))
+plot(oto_highres[oto_highres$ID=="BH-91045",]$dist,
+     oto_highres[oto_highres$ID=="BH-91045",]$Sr, type="l",
+     xlab="Distance (um)", ylab="Sr/Ca")
+plot(row_number(Srd18O[Srd18O$ID=="BH-91045",]$ID),
+     Srd18O[Srd18O$ID=="BH-91045",]$Sr, type="l",
+     xlab="transect cell", ylab="Sr/Ca")
+
+#subset according to cluster
+Fclust_lowres <- subset(oto_lowres, clust==1)
+Fclust_highres <- subset(oto_highres, clust==1)
+Bclust_lowres <- subset(oto_lowres, clust==2)
+Bclust_highres <- subset(oto_highres, clust==2)
+
+#data package
+save(Fclust_lowres,Bclust_lowres,Fclust_highres, Bclust_highres,interpol,
+     file = "Data/Otoliths/Adults_element_transects.RData")
+```
+
+```{r get best clustering method, include=FALSE, eval=FALSE}
+rm(list = ls())
+#read in data
+Freshwater <- read.delim("Data/Otoliths/Freshwater-cluster.txt",
+                         header = T, sep = "\t", dec = ".",
+                         stringsAsFactors = F)
+
+Bodden <- read.delim("Data/Otoliths/Bodden-cluster.txt",
+                         header = T, sep = "\t", dec = ".",
+                         stringsAsFactors = F)
+Bodden <- Bodden%>%filter(ID!="BH-01908")
+
+#make into list of matrices
+IDOto <- unique(Bodden$ID)
+
+series <- list()
+for (i in 1:length(IDOto)) {
+  m <- as.matrix(Bodden[which(Bodden$ID==IDOto[i]),c(5)])
+  series[[length(series)+1]] <- m
+}
+
+names(series) <- c(IDOto)
+labels <- NULL
+Boddenlabels <- for (i in 1:length(IDOto)) {
+  ind <- unique(Bodden[which(Bodden$ID==IDOto[i]), "area"])
+  labels = c(labels, ind)
+}
+
+acf_fun <- function(series, ...) {
+lapply(series, function(x) {
+as.numeric(acf(x, lag.max = 50, plot = FALSE)$acf)
+})
+}
+
+
+cfgs <- compare_clusterings_configs(
+  types = c("h","t","f"),
+  k = 2L,
+  controls = list(hierarchical = hierarchical_control(method = "all"),
+                tadpole = tadpole_control(dc = c(1.5,2), window.size = 5L),
+                fuzzy = fuzzy_control(fuzziness = c(2,2.5),iter.max = 30L)
+                ),
+  preprocs = pdc_configs("preproc", none = list(),
+                       zscore = list(center = c(FALSE)),
+                       fuzzy = list(acf_fun=list()),
+                       share.config = c("h", "t")
+                       ),
+  distances = pdc_configs("distance",
+                        dtw=list(),fuzzy = list(L2 = list()),
+                        share.config = c("h")
+                        ),
+  centroids = pdc_configs("centroid", hierarchical = list(default = list()),
+                        fuzzy = list(fcmdd = list()),
+                        tadpole = list(default = list(), 
+                                       shape_extraction =list(znorm = TRUE)
+                                       )
+                        ),
+  )
+
+num_configs <- sapply(cfgs, attr, which = "num.configs")
+cat("\nTotal number of configurations without considering optimizations:",
+sum(num_configs),
+"\n\n")
+
+
+vi_evaluators <- cvi_evaluators("VI", ground.truth = labels)
+score_fun <- vi_evaluators$score
+pick_fun <- vi_evaluators$pick
+
+comparison <- compare_clusterings(series, types = c("h", "t", "f"), configs = cfgs,
+                                  trace = TRUE, seed = 293L, 
+                                  score.clus = score_fun, pick.clus = pick_fun,
+                                  return.objects = TRUE)
+ #does not work yet... But unnecessary atm
+
+``` 
+
 
 ## Setup and cleanup of data for mixed models
 
