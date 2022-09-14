@@ -143,7 +143,7 @@ for (i in 1:length(IDOto)) {
 otoint_lowres <- cbind(d18O, dfE)
 ```
 
-```{r covariance d18O and Sr, include=FALSE}
+```{r covariance d18O and Sr, include=FALSE, eval=FALSE}
 #clean up
 Oto_lowres <- otoint_lowres%>%
   filter(capt!="KD")%>%
@@ -151,7 +151,7 @@ Oto_lowres <- otoint_lowres%>%
   transmute(ID=ID,
             capt=capt,
             area=area,
-            dist=sims_dist,
+            dist=dist,
             Sr=Sr,
             d18O=d18O)%>%
   drop_na()
@@ -205,13 +205,13 @@ ggarrange(P1,P2,P3,P4,P5,P6)
 png(filename = "Figures/Correlation_d18O~Sr.png", 
     width = 3000, height = 1800, res = 600)
 ggplot(Oto_lowres,aes(x=Sr*1000, y=d18O))+
-  geom_point()+
+  geom_point(size=.5)+
   scale_x_continuous(breaks = seq(0,8,1))+
   scale_y_continuous(breaks = seq(-15,0,1))+
   labs(x="Sr/Ca (mg/g)", 
        y=expression(bold(delta^18*"O"~("VPDB \u2030"))),
        title=expression(bold("Correlation of intraotolith Sr and"~delta^18*"O")))+
-  stat_smooth(method = "lm", fullrange = T)+
+  stat_smooth(method = "lm", fullrange = T, size = .8)+
   theme_classic()+
     theme(panel.grid.major = element_line(),
           axis.line = element_line(size = .5, colour = "black", linetype = 1),
@@ -272,16 +272,21 @@ otoint_lowres <- otoint_lowres%>%
 plot(otoint_lowres[otoint_lowres$ID=="BH-01855",]$dist, otoint_lowres[otoint_lowres$ID=="BH-01855",]$d18O, type="l")
 
 #Save data
-write.table(otoint_lowres, "Data/Oto_LA-to-d18O_interpolation.txt", 
+write.table(otoint_lowres, "Data/Pike/Oto_LA-to-d18O_interpolation.txt", 
             row.names = F,dec = ".", sep = "\t")
 ```
 
 ## Lifelong niche on population level
 ```{r lifelong niche, include=FALSE}
 #script to form annual means of elemental data for clustering and increment analysis
+rm(list = ls())
+#Read in data
+otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt", header = T,
+                            stringsAsFactors = F, dec = ".", sep = "\t")
+
 otoint_lifehist <- otoint_lowres%>%
   transmute(ID=ID,
-            age=age,
+            age=as.factor(age),
             capt=capt,
             area=case_when(area=="WRB"~"Lagoon",
                            area=="NRB"~"Lagoon",
@@ -290,23 +295,24 @@ otoint_lifehist <- otoint_lowres%>%
             d18O=d18O,
             d18O_res=res,
             Sr=Sr,
-            year=year,
+            year=as.factor(year),
             dist=dist)
 
 # Plot lifelong increase in d18O --> colder the older
 mypallette <- viridis::viridis(4, direction = 1)
 
-ggplot(otoint_lifehist, aes(year, d18O_res))+
-  geom_boxplot(aes(color = area), width = 0.5)+
+d18O <- ggplot(otoint_lifehist, aes(year, d18O_res))+
+  geom_boxplot(aes(color = area), width = 0.5, outlier.size = .5)+
   scale_x_discrete(limits = factor(1:10))+
   labs(x="Age (years)",
-       y=expression(bold("Sr-corrected"~delta^18*"O"~("VPDB \u2030"))))+
+       y=expression(bold("Sr-corrected"~delta^18*"O"~("VPDB \u2030"))),
+       color="area of capture")+
   theme_classic()+
   scale_color_viridis_d(direction = -1, begin = 0, end = 0.7)+
   theme(panel.grid.major = element_line(),
         legend.position = "none",
         legend.background = element_blank(),
-        legend.box.background = element_rect(),
+        legend.box.background = element_blank(),
         axis.line = element_line(size = .5, colour = "black", linetype = 1),
         axis.ticks = element_line(size = .5, colour = "black"),
         axis.text = element_text(size = 10, colour = "black"),
@@ -316,17 +322,33 @@ ggplot(otoint_lifehist, aes(year, d18O_res))+
         legend.title = element_text(size = 10, face = "bold"),
         legend.key.size = unit(.8,"line"))
 
-#Here you left, you dodo, now make the other figure
-
 #Lifelong increase in Sr/Ca --> saltier the older
-B <- ggplot(Alldata[Alldata$waterbody!="KD",], aes(year, Sr))+
-  geom_boxplot(aes(color = area), width = 0.5, show.legend = F)+
-  scale_x_discrete(limits = factor(1:10))+
-  theme(legend.position = "bottom")+
-  theme_minimal()
+SrCa <- ggplot(otoint_lifehist, aes(year, Sr*1000))+
+  geom_boxplot(aes(color = area), width = 0.5, outlier.size = .5)+
+  scale_x_discrete(limits = factor(1:11))+
+  labs(x="Age (years)",
+       y="Sr/Ca (mg/g)",
+       color="area of capture")+
+  theme_classic()+
+  scale_color_viridis_d(direction = -1, begin = 0, end = 0.7)+
+  theme(panel.grid.major = element_line(),
+        legend.position = "none",
+        legend.background = element_blank(),
+        legend.box.background = element_blank(),
+        axis.line = element_line(size = .5, colour = "black", linetype = 1),
+        axis.ticks = element_line(size = .5, colour = "black"),
+        axis.text = element_text(size = 10, colour = "black"),
+        axis.title.x = element_text(size = 10, face = "bold"),
+        axis.title.y = element_text(size = 10, face = "bold"),
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 10, face = "bold"),
+        legend.key.size = unit(.8,"line"))
 
-AB <- ggarrange(A, B, ncol = 2, nrow = 1, labels = c("A", "B"), common.legend = TRUE,
+png(filename = "Figures/Lifelong_niche.png", 
+    width = 4500, height = 1800, res = 600)
+ggarrange(d18O, SrCa, ncol = 2, nrow = 1, labels = c("A", "B"), common.legend = TRUE,
                 legend = "bottom")
+dev.off()
 ```
 
 ## Setup and cleanup of data for mixed models
@@ -863,7 +885,7 @@ plot(0, xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
 ```
 
 ## Initial model
-$log10(Inc) \sim Age+Age*cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc/ID)$
+$$log10(Inc) \sim Age*cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc/ID)$$
 
 ```{r exclude random effect of ID}
 #Run model
@@ -871,7 +893,7 @@ pikemodel.1 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
                         Sr_mean+sex+(1|waterbody/ID), 
                       REML = T, data = pikes2)
 summary(pikemodel.1)
-#Random effects cannot e estimated as too low variance
+#Random effects cannot be estimated as too low variance
 #Model runs properly when excluding ID:
 pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
                       Sr_mean+sex+(1|waterbody), 
@@ -880,11 +902,13 @@ summary(pikemodel.1.0)
 ```
  
 ## New model
-$log10(Inc) \sim Age+Age*cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc)$
+$$log10(Inc) \sim Age*d18Ores+Age*cluster+Age^2+Srmean+Sex+(1|Location)$$
 
 ```{r Look at variance inflation factors, echo=TRUE}
 #Look at variance inflation factors
-
+pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
+                      Sr_mean+sex+(1|waterbody), 
+                      REML = T, data = pikes2)
 
 pike.vif <- vif(pikemodel.1.0)
 
@@ -893,7 +917,7 @@ barplot(pike.vif[,3], main = "VIF values", horiz = F, col = "darkgreen", ylim = 
 abline(h = 5, lwd = 3, lty = 2, col="red")
 ```
 
-## Random effects not significant
+## Log-likelihood ratio tests
 ```{r test random effects, echo=TRUE}
 #Test model components
 #Test random effects
@@ -902,8 +926,6 @@ rand(pikemodel.1.0)
 summary(pikemodel.final)
 ```
 
-\newpage
-## Age is significant
 ```{r test effects age, echo=TRUE}
 #Remove age quadratic term
 pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
@@ -917,14 +939,15 @@ pikemodel.noage <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+
 anova(pikemodel.1.0, pikemodel.noage)
 #age is significant
 ```
-## Age*cluster is significant
+
 ```{r test cluster effects}
 pikemodel.noclust <- lmer(log10(inc)~lifeyear*res_mean+clust+I(lifeyear^2)+
                       Sr_mean+sex+(1|waterbody), 
                       REML = F, data = pikes2)
 anova(pikemodel.1.0, pikemodel.noclust)
+#age*cluster is significant
 ```
-## Relative d18O is significant
+
 ```{r test effects d18O, echo=TRUE}
 #Remove d18O
 pikemodel.nores <- lmer(log10(inc)~lifeyear*clust+res_mean+I(lifeyear^2)+
@@ -933,7 +956,7 @@ pikemodel.nores <- lmer(log10(inc)~lifeyear*clust+res_mean+I(lifeyear^2)+
 anova(pikemodel.1.0, pikemodel.nores)
 #relative d18O significant
 ```
-## Relative Sr is not significant
+
 ```{r test effects Sr, echo=TRUE}
 #Remove Sr
 pikemodel.noSr <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
@@ -942,7 +965,7 @@ pikemodel.noSr <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)
 anova(pikemodel.1.0, pikemodel.noSr)
 #Sr not significant
 ```
-## Sex is significant
+
 ```{r test effects sex, echo=TRUE}
 #Remove sex
 pikemodel.nosex <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
@@ -984,7 +1007,6 @@ r.squaredGLMM(pikemodel.final)
 ```
 
 ## Figure main effects
-
 ```{r temp & clust effect figure}
 #factorize temperature
 pikes2$agefact <- ifelse(pikes2$lifeyear<3, 2, 
@@ -1058,10 +1080,11 @@ Clust <- ggplot(pikes3[pikes$lifeyear<=10,], aes(factor(lifeyear), inc, color=cl
         legend.title = element_text(size = 10, face = "bold"),
         legend.key.size = unit(.8,"line"))
 
-Fig <- ggarrange(Temp, Clust, align = "h")
+Fig <- ggarrange(Temp, Clust, align = "h", labels = c("A", "B"), label.x = .02)+
+  theme(plot.margin = margin(.5,0,0,0,"cm"))
 
 png(filename = "Figures/Interaction_effects_growth.png", 
-    width = 4500, height = 1800, res = 600)
-annotate_figure(plot, top = text_grob("Effects of relative lifelong temperature and ecotype on pike growth", color = "black", face = "bold", size = 15))
+    width = 4500, height = 2000, res = 600)
+annotate_figure(Fig, top = text_grob("Effects of relative lifelong temperature and ecotype on pike growth", color = "black", face = "bold", size = 15, vjust = 1))
 dev.off()
 ```
