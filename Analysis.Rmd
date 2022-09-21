@@ -24,6 +24,10 @@ library(knitr)
 library(car)
 library(ggpubr)
 library(mclust)
+library(dtwclust)
+library(vegan)
+library(mvabund)
+library(MASS)
 ```
 
 ## preparation of Sr and d18O data
@@ -420,6 +424,9 @@ fit2 <- Mclust(Elemeans[,c(3,8)], G=3, modelNames = "VII")
 
 #Assign cluster to data
 Elemeans$clust <- as.factor(fit2$classification)
+
+#Make list of cluster & ID
+ClustID <- Elemeans[,c(1,9)]
 ```
 
 ```{r plot preclustering results, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
@@ -448,9 +455,6 @@ ggplot(Elemeans, aes(d18O, Sr, color=area, shape=clust))+
         legend.box.background = element_rect(),
         plot.title = element_text(size = 15, face = "bold"))
 dev.off()
-
-#Make list of cluster & ID
-ClustID <- Elemeans[,c(1,9)]
 ```
 
 ```{r subset data according to preclustering results, include=FALSE, eval=FALSE}
@@ -461,6 +465,7 @@ oto_clusters <- oto_lowres%>%
   group_by(ID)%>%
   na.omit()%>%
   transmute(ID=ID,
+            age=age,
             capt=capt,
             area=area,
             d18O=d18O,
@@ -470,6 +475,7 @@ oto_clusters <- oto_lowres%>%
             Mg=Mg,
             Ba=Ba,
             Mn=Mn,
+            year=year,
             clust=clust,
             dist=dist)
 
@@ -517,10 +523,11 @@ plot(row_number(Srd18O[Srd18O$ID=="BH-91045",]$ID),
      xlab="transect cell", ylab="Sr/Ca")
 
 #data package
-save(Fgroup,Bgroup,interpol, file = "Data/Otoliths/Adults_element_transects.RData")
+save(Fgroup,Bgroup,interpol, file = "Data/Pike/Adults_element_transects.RData")
 ```
 
-```{r get best clustering method, include=FALSE, eval=FALSE}
+## DTW-clustering
+```{r get best clustering method?, include=FALSE, eval=FALSE}
 rm(list = ls())
 #read in data
 Freshwater <- read.delim("Data/Otoliths/Freshwater-cluster.txt",
@@ -595,8 +602,332 @@ comparison <- compare_clusterings(series, types = c("h", "t", "f"), configs = cf
                                   return.objects = TRUE)
  #does not work yet... But unnecessary atm
 
-``` 
+```
 
+```{r dtw data prep 3-year old, include=FALSE}
+rm(list = ls())
+#read in data
+load("Data/Pike/Adults_element_transects.RData")
+
+#Filter out vaterite fish, shorten to 3 year olds
+Bgroup1 <- Bgroup%>%filter(ID!="BH-01908")%>%filter(age>=3, year<4)
+Fgroup1 <- Fgroup%>%filter(age>=3, year<4)
+
+#Look for sample size
+length(unique(Bgroup1$ID))
+length(unique(Fgroup1$ID))
+
+#Mean transect length
+summary(count(Bgroup1, "ID")) #Mean length 28 data points
+summary(count(Fgroup1, "ID")) #Mean length 32 data points
+
+#Make year a factor
+Bgroup1$year <- as.factor(Bgroup1$year)
+Fgroup1$year <- as.factor(Fgroup1$year)
+
+#Calculate the number of transect cells needed to represent the "mean first"/"mean second"/
+#"mean third" - year in standardized 30 cells interpolations
+summary(Bgroup1$year)
+year1 <- round((719/(719+446+243))*30,0)
+year2 <- round((446/(719+446+243))*30,0)
+year3 <- round((243/(719+446+243))*30,0)
+year1+year2+year3 #needs to add up to 30
+
+#reinterpolate to standard length
+dataB1 <- interpol(series = Bgroup1, length = 30, element = "Sr")
+dataB2 <- interpol(series = Bgroup1, length = 30, element = "d18O_res")
+
+dataF1 <- interpol(series = Fgroup1, length = 30, element = "Sr")
+dataF2 <- interpol(series = Fgroup1, length = 30, element = "d18O_res")
+
+dataB <- cbind(dataB1, dataB2[,2])
+dataF <- cbind(dataF1, dataF2[,2])
+
+dataB[,2] <- scale(dataB[,2])
+dataF[,2] <- scale(dataF[,2])
+
+colnames(dataB) <- c("ID", "Sr", "d18O_res")
+colnames(dataF) <- c("ID", "Sr", "d18O_res")
+
+#make list of matrices for DTW
+IDOto <- unique(dataB$ID)
+Bseries <- list()
+
+for (i in 1:length(IDOto)) {
+  m <- as.matrix(dataB[which(dataB$ID==IDOto[i]),c(2,3)])
+  Bseries[[length(Bseries)+1]] <- m
+}
+
+names(Bseries) <- c(IDOto)
+
+IDOto <- unique(dataF$ID)
+Fseries <- list()
+
+for (i in 1:length(IDOto)) {
+  m <- as.matrix(dataF[which(dataF$ID==IDOto[i]),c(2,3)])
+  Fseries[[length(Fseries)+1]] <- m
+}
+
+names(Fseries) <- c(IDOto)
+
+save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, year1, year2, year3, interpol,
+     file = "Data/Pike/Adults_element_transects.RData")
+```
+
+```{r DTW clustering 3 year olds}
+#cluster Bodden with cutoff test
+clust_B <- tsclust(series = Bseries, type = "hierarchical",
+                  k = 2L:6L,centroid = dba,
+                  control = hierarchical_control(method = "ward.D"),
+                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
+
+names(clust_B) <- paste0("k_",2L:6L)
+
+sapply(clust_B, cvi, type = "internal")
+
+#cluster FW with cutoff test
+clust_F <- tsclust(series = Fseries, type = "hierarchical",
+                  k = 2L:6L,centroid = dba,
+                  control = hierarchical_control(method = "ward.D"),
+                  seed = 96L,args = tsclust_args(dist = list(window.size =5L)))
+
+names(clust_F) <- paste0("k_",2L:6L)
+
+sapply(clust_F, cvi, type = "internal")
+
+#Plot best solution lagoons
+# png(filename = "C:/Users/timor/Nextcloud2/Timo/BODDENHECHT/Chapter 2/Stats/Niche analysis/Figures/Year_3_Sr_d18O_centroids.jpg", width = 2400, height = 800)
+plot(clust_B$k_2, type="centroid", linetype="solid", 
+     alpha=0.5, cex=1)+
+  ylim(-2.5,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
+  labs(x="transect cell", y="scaled value")+
+  theme(axis.text = element_text(size = 25, color="black"),
+        axis.title = element_text(size = 25),
+        plot.title = element_text(size = 25, hjust = 0.5))
+#dev.off()
+
+#Plot best solution Freshwater
+plot(clust_F$k_2, type="centroid", linetype="solid", cex=1)+
+  ylim(-2.5,2)+xlim(0,60)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
+  labs(x="transect cell", y="scaled value")+
+  theme(axis.text = element_text(size = 25, color="black"),
+        axis.title = element_text(size = 25),
+        plot.title = element_text(size = 25, hjust = 0.5))
+```
+
+```{r cluster assignment 3 year olds}
+#assign clusters to fish
+fishassign_B <- data.frame(ID=names(Bseries), 
+                            clust2=factor(clust_B$k_2@cluster, 
+                                           levels = c(1:2), 
+                                           labels = c("High saline|warm",
+                                                      "Low saline|cold")))
+
+fishassign_F <- data.frame(ID=names(Fseries), 
+                            clust2=factor(clust_F$k_2@cluster, 
+                                           levels = c(1:2), 
+                                           labels = c("FW low saline|cold",
+                                                      "FW high saline|warm")))
+#Join dtw clusters with pike data
+Bgroup1$area <- ifelse(Bgroup1$area=="Marine", "GB", Bgroup1$area)
+
+fishassign_B <- Bgroup1%>%
+  group_by(ID)%>%
+  transmute(ID=ID,
+            capt=capt,
+            area=as.factor(area),
+            areaorder=case_when(area=="WRB"~1,
+                                area=="NRB"~2,
+                                area=="GB"~3,
+                                area=="Freshwater"~4))%>%
+  distinct()%>%
+  inner_join(fishassign_B2, by="ID")%>%
+  mutate(clust2=fct_relevel(clust2,
+                             "Low saline|cold",
+                             "High saline|warm"))
+
+fishassign_F <- Fgroup1%>%
+  group_by(ID)%>%
+  transmute(ID=ID,
+            capt=capt,
+            area=area)%>%
+  distinct()%>%
+  inner_join(fishassign_F2, by="ID")%>%
+  mutate(clust_O=fct_relevel(clust2,
+                             "FW low saline|cold",
+                             "FW high saline|warm"))
+```
+
+```{r plot Bodden proportions}
+mypallette <- viridis::viridis(3, direction = -1)
+
+#Plot Bodden proportions
+
+#png(filename = "C:/Users/timor/Nextcloud2/Timo/BODDENHECHT/Chapter 2/Stats/Niche analysis/Figures/Clusterassign.jpg", width = 2400, height = 800)
+ggplot(fishassign_B, aes(reorder(area.x, areaorder.x), fill=clust2))+
+  geom_bar(position = "fill", width = .5)+theme_minimal()+
+  labs(x="", y="proportion", fill="assigned cluster")+
+  scale_fill_manual(breaks=c("Low saline|cold",
+                             "High saline|warm"), 
+                    values = mypallette)+
+  theme(axis.text.y = element_text(size = 25, color = "black"),
+        axis.text.x = element_text(size = 25, color = "black"),
+        axis.title = element_text(size = 25),
+        legend.text = element_text(size = 25),
+        legend.title = element_text(size = 25),
+        legend.position = "top")
+#dev.off()
+
+#Plot FW proportions
+ggplot(fishassign_F, aes(capt, fill=clust2))+
+  geom_bar(position = "fill", width = .5)+theme_minimal()+
+  labs(x="", y="proportion", fill="assigned cluster")+
+  scale_fill_manual(breaks=c("FW low saline|cold",
+                             "FW high saline|warm"), 
+                    values = mypallette)+
+  theme(axis.text.y = element_text(size = 25, color = "black"),
+        axis.text.x = element_text(size = 25, color = "black"),
+        axis.title = element_text(size = 25),
+        legend.text = element_text(size = 25),
+        legend.title = element_text(size = 25),
+        legend.position = "right")
+
+write.table(fishassign_B, file = "Data/Pike/Year_3_Bclusters.txt", row.names = F,
+            dec = ".", sep = "\t")
+write.table(fishassign_F, file = "Data/Pike/Year_3_Fclusters.txt", row.names = F,
+            dec = ".", sep = "\t")
+```
+
+```{r dissimilarity test, include=FALSE}
+rm(list = ls())
+#read in data
+load("Data/Pike/Adults_element_transects.RData")
+
+fishassign_B <- read.delim("Data/Pike/Year_3_Bclusters.txt", header = T,
+                           stringsAsFactors = F, sep = "\t",dec=".")
+
+fishassign_F <- read.delim("Data/Pike/Year_3_Fclusters.txt", header = T,
+                           stringsAsFactors = F, sep = "\t",dec=".")
+
+#transform data to all positive
+dataB$d18O_res <- (dataB$d18O_res+sqrt((min(dataB$d18O_res))^2))
+#So a value of d18O res is now to be interpreted as residual from predicted
+#value + 2.518462
+
+dataB$Sr <- (dataB$Sr+sqrt((min(dataB$Sr))^2))
+#So a value of Sr is now to be interpreted as scaled value + 2.716513
+
+#Same for reshwater group
+dataF$d18O_res <- (dataF$d18O_res+sqrt((min(dataF$d18O_res))^2))
+dataF$Sr <- (dataF$Sr+sqrt((min(dataF$Sr))^2))
+
+#make list of matrices Bodden
+IDOto <- unique(dataB$ID)
+Bseries <- list()
+
+for (i in 1:length(IDOto)) {
+  m <- as.matrix(dataB[which(dataB$ID==IDOto[i]),c(2,3)])
+  Bseries[[length(Bseries)+1]] <- m
+}
+
+names(Bseries) <- c(IDOto)
+
+#make list of matrices freshwater
+IDOto <- unique(dataF$ID)
+Fseries <- list()
+
+for (i in 1:length(IDOto)) {
+  m <- as.matrix(dataF[which(dataF$ID==IDOto[i]),c(2,3)])
+  Fseries[[length(Fseries)+1]] <- m
+}
+
+names(Fseries) <- c(IDOto)
+
+#Revert from list to data frame, assign cell numbers
+SeriesB <- do.call(rbind.data.frame,Bseries)
+SeriesB$ID <- substr(rownames(SeriesB), 1,8)
+rownames(SeriesB) <- NULL
+SeriesB$cell <- rep(c(1:30), 50)
+
+#Make cluster list
+Bclust <- fishassign_B%>%
+  transmute(ID=ID,
+            clust=clust2)
+
+#Assign years based on cell numbers, join with cluster ID
+SeriesB <- SeriesB%>%
+  mutate(year=case_when(cell<=year1~1,
+                        cell<=year1+year2&cell>year1~2,
+                        cell>year1+year2~3))%>%
+  inner_join(Bclust, by="ID")%>%
+  transmute(ID=ID,
+            year=year,
+            cell=cell,
+            clust=clust,
+            Sr=Sr,
+            d18O_res=d18O_res)%>%
+  group_by(ID, year)%>%
+  summarize(ID=ID,
+            year=year,
+            clust=clust,
+            Sr=mean(Sr),
+            d18O_res=mean(d18O_res))%>%
+  distinct()
+
+#Make wide for testing
+SeriesB2 <- pivot_wider(SeriesB, names_from = year, values_from = c(Sr, d18O_res))
+names(SeriesB2) <- c("ID", "clust",
+                    "Sr_orig", "Sr_juv", "Sr_adult", 
+                    "O_orig", "O_juv", "O_adult")
+#cluster needs to be a factor
+SeriesB2$clust <- as.factor(SeriesB2$clust)
+
+#make mvabund object of Sr and d18O data
+elements <- mvabund(SeriesB2[,3:8])
+
+boxplot(elements)
+
+Pikedist <- vegdist(elements, method = "euclidean")
+Disp <- betadisper(Pikedist, SeriesB2$clust)
+anova(Disp)
+
+plot(Disp)
+
+adonis2(elements~SeriesB2$clust, method = "euclidean", permutations = 9999)
+```
+
+```{r jackknife reclassification 3 year olds}
+set.seed(123)
+sample <- sample(c(TRUE, FALSE), nrow(SeriesB2), 
+                 replace = T, prob = c(0.6,0.4))
+train <- SeriesB2[sample,]
+test <- SeriesB2[!sample,]
+
+lda.m1 <- lda(clust~Sr_orig+Sr_juv+Sr_adult+O_orig+O_juv+O_adult, 
+              data = train)
+
+#jackknife reclassification
+lda.m2 <- lda(clust~Sr_orig+Sr_juv+Sr_adult+O_orig+O_juv+O_adult, 
+              data = SeriesB2, CV=TRUE)
+
+SeriesB2$jacknife <- lda.m2$class
+SeriesB2 %>% summarise(lda.error=mean(clust != jacknife))
+```
+
+```{r dtw graphics}
+Salcentroid <- DBA(Bseries[1:10], trace = T, mv.ver = "by-variable")
+matplot(do.call(cbind, Bseries[1:10]), type = "l")
+lines(Salcentroid)
+
+data(uciCT)
+
+# Obtain an average for the first 5 time series
+dtw_avg <- DBA(CharTraj[1:5], trace = TRUE)
+
+# Plot
+matplot(do.call(cbind, CharTraj[1:5]), type = "l")
+lines(dtw_avg)
+```
 
 ## Setup and cleanup of data for mixed models
 
