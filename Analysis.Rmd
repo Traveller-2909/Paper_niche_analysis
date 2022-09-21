@@ -266,8 +266,7 @@ otoint_lowres <- otoint_lowres%>%
             Ba=Ba,
             Mn=Mn,
             year=year,
-            dist=sims_dist)%>%
-  drop_na()
+            dist=sims_dist)
 
 #check for pattern smoothness
 plot(otoint_lowres[otoint_lowres$ID=="BH-01855",]$dist, otoint_lowres[otoint_lowres$ID=="BH-01855",]$d18O, type="l")
@@ -360,7 +359,7 @@ rm(list = ls())
 # oto_highres <- read.delim("Data/Otoliths/Oto_d18O-to-LA_interpolation.txt",
 #                          header = T, dec = ".", sep = "\t",
 #                          stringsAsFactors = F)
-oto_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation_KD.txt",
+oto_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt",
                          header = T, dec = ".", sep = "\t",
                          stringsAsFactors = F) #This is not low-res, you need to change that!!!
 
@@ -368,18 +367,18 @@ oto_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation_KD.txt",
 #Form means
 Elemeans <- oto_lowres%>%
   group_by(ID)%>%
-  na.omit()%>%
   summarise(ID=ID,
-            area=case_when(area=="Marine"~"Lagoon",
-                           area=="Ana"~"Tributary",
+            area=case_when(area=="WRB"~"Lagoon",
+                           area=="NRB"~"Lagoon",
+                           area=="Marine"~"Lagoon",
                            area=="Freshwater"~"Tributary",
-                           area=="control"~"Control lake"),
+                           area=="Control"~"Control lake"),
             Sr=mean(Sr),
             Na=mean(Na),
             Mg=mean(Mg),
             Ba=mean(Ba),
             Mn=mean(Mn),
-            d18O=mean(d18O))%>%
+            d18O=mean(d18O, na.rm=T))%>%
   distinct()
 
 #Scale means
@@ -417,7 +416,7 @@ plot(fit, what = "density")
 summary(fit, parameters=T)
 
 #Cluster again with best method
-fit2 <- Mclust(Elemeans[,c(3,8)], G=3, modelNames = "VVI")
+fit2 <- Mclust(Elemeans[,c(3,8)], G=3, modelNames = "VII")
 
 #Assign cluster to data
 Elemeans$clust <- as.factor(fit2$classification)
@@ -450,12 +449,14 @@ ggplot(Elemeans, aes(d18O, Sr, color=area, shape=clust))+
         plot.title = element_text(size = 15, face = "bold"))
 dev.off()
 
-#Assign clusters to timeseries
+#Make list of cluster & ID
 ClustID <- Elemeans[,c(1,9)]
 ```
 
 ```{r subset data according to preclustering results, include=FALSE, eval=FALSE}
-oto_lowres <- oto_lowres%>%
+
+#Join cluster grouping to data
+oto_clusters <- oto_lowres%>%
   inner_join(ClustID, by = "ID")%>%
   group_by(ID)%>%
   na.omit()%>%
@@ -463,16 +464,21 @@ oto_lowres <- oto_lowres%>%
             capt=capt,
             area=area,
             d18O=d18O,
+            d18O_res=res,
             Sr=Sr,
             Na=Na,
             Mg=Mg,
             Ba=Ba,
             Mn=Mn,
             clust=clust,
-            dist=LA_dist)
+            dist=dist)
 
-#Test mean length of transect (data points)
-summary(count(oto_lowres, "ID"))
+#subset according to cluster
+Fgroup <- subset(oto_clusters, clust==1)
+Bgroup <- subset(oto_clusters, clust==2)
+
+#Test length, needs to equal N=86
+length(unique(Bgroup$ID))+length(unique(Fgroup$ID))
 
 #Function to reinterpolate an element to a specified length
 interpol <- function(series, length, element){
@@ -494,8 +500,8 @@ interpol <- function(series, length, element){
 }
 
 #Test function
-Srall <- interpol(series = oto_highres, length = 250, element = "Sr")
-d18Oall <- interpol(series = oto_highres, length = 250, element = "d18O")
+Srall <- interpol(series = oto_clusters, length = 250, element = "Sr")
+d18Oall <- interpol(series = oto_clusters, length = 250, element = "d18O")
 
 Srd18O <- cbind(Srall, d18Oall[,2])
 colnames(Srd18O) <- c("ID", "Sr", "d18O")
@@ -503,22 +509,15 @@ colnames(Srd18O) <- c("ID", "Sr", "d18O")
 
 #compare pattern retention
 par(mfrow=c(1,2))
-plot(oto_highres[oto_highres$ID=="BH-91045",]$dist,
-     oto_highres[oto_highres$ID=="BH-91045",]$Sr, type="l",
+plot(oto_clusters[oto_clusters$ID=="BH-91045",]$dist,
+     oto_clusters[oto_clusters$ID=="BH-91045",]$Sr, type="l",
      xlab="Distance (um)", ylab="Sr/Ca")
 plot(row_number(Srd18O[Srd18O$ID=="BH-91045",]$ID),
      Srd18O[Srd18O$ID=="BH-91045",]$Sr, type="l",
      xlab="transect cell", ylab="Sr/Ca")
 
-#subset according to cluster
-Fclust_lowres <- subset(oto_lowres, clust==1)
-Fclust_highres <- subset(oto_highres, clust==1)
-Bclust_lowres <- subset(oto_lowres, clust==2)
-Bclust_highres <- subset(oto_highres, clust==2)
-
 #data package
-save(Fclust_lowres,Bclust_lowres,Fclust_highres, Bclust_highres,interpol,
-     file = "Data/Otoliths/Adults_element_transects.RData")
+save(Fgroup,Bgroup,interpol, file = "Data/Otoliths/Adults_element_transects.RData")
 ```
 
 ```{r get best clustering method, include=FALSE, eval=FALSE}
