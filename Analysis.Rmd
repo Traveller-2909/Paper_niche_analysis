@@ -821,45 +821,42 @@ dataB$Sr <- (dataB$Sr+sqrt((min(dataB$Sr))^2))
 dataF$d18O_res <- (dataF$d18O_res+sqrt((min(dataF$d18O_res))^2))
 dataF$Sr <- (dataF$Sr+sqrt((min(dataF$Sr))^2))
 
+#join
+data <- rbind(dataB, dataF)
+
 #make list of matrices Bodden
-IDOto <- unique(dataB$ID)
-Bseries <- list()
+IDOto <- unique(data$ID)
+series <- list()
 
 for (i in 1:length(IDOto)) {
-  m <- as.matrix(dataB[which(dataB$ID==IDOto[i]),c(2,3)])
-  Bseries[[length(Bseries)+1]] <- m
+  m <- as.matrix(data[which(data$ID==IDOto[i]),c(2,3)])
+  series[[length(series)+1]] <- m
 }
 
-names(Bseries) <- c(IDOto)
-
-#make list of matrices freshwater
-IDOto <- unique(dataF$ID)
-Fseries <- list()
-
-for (i in 1:length(IDOto)) {
-  m <- as.matrix(dataF[which(dataF$ID==IDOto[i]),c(2,3)])
-  Fseries[[length(Fseries)+1]] <- m
-}
-
-names(Fseries) <- c(IDOto)
+names(series) <- c(IDOto)
 
 #Revert from list to data frame, assign cell numbers
-SeriesB <- do.call(rbind.data.frame,Bseries)
-SeriesB$ID <- substr(rownames(SeriesB), 1,8)
-rownames(SeriesB) <- NULL
-SeriesB$cell <- rep(c(1:30), 50)
+Series <- do.call(rbind.data.frame,series)
+Series$ID <- substr(rownames(Series), 1,8)
+rownames(Series) <- NULL
+Series$cell <- rep(c(1:30), 62)
 
 #Make cluster list
 Bclust <- fishassign_B%>%
   transmute(ID=ID,
             clust=clust2)
+Fclust <- fishassign_F%>%
+  transmute(ID=ID,
+            clust=clust2)
+
+clust <- rbind(Bclust, Fclust)
 
 #Assign years based on cell numbers, join with cluster ID
-SeriesB <- SeriesB%>%
+Series1 <- Series%>%
   mutate(year=case_when(cell<=year1~1,
                         cell<=year1+year2&cell>year1~2,
                         cell>year1+year2~3))%>%
-  inner_join(Bclust, by="ID")%>%
+  inner_join(clust, by="ID")%>%
   transmute(ID=ID,
             year=year,
             cell=cell,
@@ -875,43 +872,50 @@ SeriesB <- SeriesB%>%
   distinct()
 
 #Make wide for testing
-SeriesB2 <- pivot_wider(SeriesB, names_from = year, values_from = c(Sr, d18O_res))
-names(SeriesB2) <- c("ID", "clust",
+Series2 <- pivot_wider(Series1, names_from = year, values_from = c(Sr, d18O_res))
+names(Series2) <- c("ID", "clust",
                     "Sr_orig", "Sr_juv", "Sr_adult", 
                     "O_orig", "O_juv", "O_adult")
 #cluster needs to be a factor
-SeriesB2$clust <- as.factor(SeriesB2$clust)
+Series2$clust <- as.factor(Series2$clust)
 
 #make mvabund object of Sr and d18O data
-elements <- mvabund(SeriesB2[,3:8])
+elements <- mvabund(Series2[,3:8])
 
 boxplot(elements)
 
 Pikedist <- vegdist(elements, method = "euclidean")
-Disp <- betadisper(Pikedist, SeriesB2$clust)
+Disp <- betadisper(Pikedist, Series2$clust)
 anova(Disp)
 
 plot(Disp)
 
-adonis2(elements~SeriesB2$clust, method = "euclidean", permutations = 9999)
+adonis2(elements~Series2$clust, method = "euclidean", permutations = 9999)
 ```
 
 ```{r jackknife reclassification 3 year olds}
 set.seed(123)
-sample <- sample(c(TRUE, FALSE), nrow(SeriesB2), 
+sample <- sample(c(TRUE, FALSE), nrow(Series2), 
                  replace = T, prob = c(0.6,0.4))
-train <- SeriesB2[sample,]
-test <- SeriesB2[!sample,]
+train <- Series2[sample,]
+test <- Series2[!sample,]
 
 lda.m1 <- lda(clust~Sr_orig+Sr_juv+Sr_adult+O_orig+O_juv+O_adult, 
               data = train)
 
 #jackknife reclassification
 lda.m2 <- lda(clust~Sr_orig+Sr_juv+Sr_adult+O_orig+O_juv+O_adult, 
-              data = SeriesB2, CV=TRUE)
+              data = Series2, CV=TRUE)
 
-SeriesB2$jacknife <- lda.m2$class
-SeriesB2 %>% summarise(lda.error=mean(clust != jacknife))
+Series2$jacknife <- lda.m2$class
+summary <- Series2 %>% summarise(clust=clust,
+                      jackknife=jacknife,
+                      lda.error=mean(clust != jacknife))
+
+success <- data.frame(HighSBodden=round(1-length(summary[summary$clust=="High saline|warm"&summary$lda.error==1,]$ID)/length(summary[summary$clust=="High saline|warm",]$ID),2), 
+                      LowSBodden=round(1-length(summary[summary$clust=="Low saline|cold"&summary$lda.error==1,]$ID)/length(summary[summary$clust=="Low saline|cold",]$ID),2),
+                      HighSFW=round(1-length(summary[summary$clust=="FW high saline|warm"&summary$lda.error==1,]$ID)/length(summary[summary$clust=="FW high saline|warm",]$ID),2),
+                      LowSFW=round(1-length(summary[summary$clust=="FW low saline|cold"&summary$lda.error==1,]$ID)/length(summary[summary$clust=="FW low saline|cold",]$ID),2))
 ```
 
 ```{r dtw graphics}
