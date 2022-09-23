@@ -29,6 +29,7 @@ library(vegan)
 library(mvabund)
 library(MASS)
 library(flextable)
+library(gridGraphics)
 ```
 
 ## preparation of Sr and d18O data
@@ -366,7 +367,7 @@ rm(list = ls())
 #                          stringsAsFactors = F)
 oto_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt",
                          header = T, dec = ".", sep = "\t",
-                         stringsAsFactors = F) #This is not low-res, you need to change that!!!
+                         stringsAsFactors = F)
 
 #Clustering step 1: model based clustering
 #Form means
@@ -675,7 +676,7 @@ save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, year1, year2, year3, interpol
      file = "Data/Pike/Adults_element_transects_3-year.RData")
 ```
 
-```{r DTW clustering 3 year olds}
+```{r DTW clustering 3 year olds, include=FALSE}
 #cluster Bodden with cutoff test
 clust_B <- tsclust(series = Bseries, type = "hierarchical",
                   k = 2L:6L,centroid = dba,
@@ -716,7 +717,7 @@ plot(clust_F$k_2, type="centroid", linetype="solid", cex=1)+
         plot.title = element_text(size = 25, hjust = 0.5))
 ```
 
-```{r cluster assignment 3 year olds}
+```{r cluster assignment 3 year olds, include=FALSE}
 #assign clusters to fish
 fishassign_B2 <- data.frame(ID=names(Bseries), 
                             clust2=factor(clust_B$k_2@cluster, 
@@ -988,7 +989,7 @@ save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol,
      file = "Data/Pike/Adults_element_transects_all.RData")
 ```
 
-```{r DTW clustering all}
+```{r DTW clustering all, include=FALSE}
 #cluster Bodden with cutoff test
 clust_B <- tsclust(series = Bseries, type = "hierarchical",
                   k = 2L:6L,centroid = dba,
@@ -1029,7 +1030,7 @@ plot(clust_F$k_2, type="centroid", linetype="solid", cex=1)+
         plot.title = element_text(size = 25, hjust = 0.5))
 ```
 
-```{r cluster assignment all}
+```{r cluster assignment all, include=FALSE}
 #assign clusters to fish
 fishassign_B2 <- data.frame(ID=names(Bseries), 
                             clust2=factor(clust_B$k_3@cluster, 
@@ -1134,14 +1135,14 @@ ggplot(fishassign_F, aes(area, fill=clust2))+
         legend.position = "right")
 ```
 
-```{r table of poportions}
+```{r table of poportions, include=FALSE, eval=FALSE}
 Allpike <- rbind(fishassign_B, fishassign_F)
 
 WRBpike <- Allpike%>%filter(area=="WRB")
 NRBpike <- Allpike%>%filter(area=="NRB")
 GBpike <- Allpike%>%filter(capt=="GB")
 FWpike <- Allpike%>%filter(area=="Freshwater")
-Props <- data.frame(Cluster=c("Lagoon low S, cold temperature",
+Props <- data.frame(Ecotype=c("Lagoon low S, cold temperature",
                               "Lagoon med S, cold temperature",
                               "Lagoon high S, warm temperature",
                               "Freshwater resident, cold temperature",
@@ -1155,27 +1156,252 @@ Props <- data.frame(Cluster=c("Lagoon low S, cold temperature",
                     Tributary=paste0(round(summary(FWpike$clust2)/nrow(FWpike)*100,
                                            1),"%"))
 
-Props%>%flextable()%>%
-  set_caption("Prportions of ecotypes per sampling area")%>%
+Propstable <- Props%>%flextable()%>%
+  set_caption("Proportions of ecotypes per sampling area")%>%
   set_table_properties(width = 0.99, layout = "autofit")%>%
   theme_vanilla()%>%
   align(j=c(2:5), align = "right")%>%
   vline(j=1)
+
+#save as docx
+save_as_docx(Propstable, path = "Tables/Proportions_Ecotypes.docx")
 ```
 
-```{r dtw graphics}
-Salcentroid <- DBA(Bseries[1:10], trace = T, mv.ver = "by-variable")
-matplot(do.call(cbind, Bseries[1:10]), type = "l")
-lines(Salcentroid)
+```{r dtw graphics, include=FALSE}
+Bgroup.clus <- Bgroup%>%inner_join(fishassign_B2, by="ID")
+Fgroup.clus <- Fgroup%>%inner_join(fishassign_F2, by="ID")
 
-data(uciCT)
+Groupall <- rbind(Bgroup.clus, Fgroup.clus)
 
-# Obtain an average for the first 5 time series
-dtw_avg <- DBA(CharTraj[1:5], trace = TRUE)
+agebreaks <- Groupall%>%group_by(ID, year)%>%
+  summarise(yeardist=max(dist))%>%
+  ungroup()%>%group_by(year)%>%
+  mutate(mean.yeardist=mean(yeardist))
 
-# Plot
-matplot(do.call(cbind, CharTraj[1:5]), type = "l")
-lines(dtw_avg)
+agebreaks.num <- unique(agebreaks$mean.yeardist)
+agebreaks.label <- as.character(seq(1,11,1))
+
+mypallette <- viridis::viridis(5, direction = 1)
+
+A <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="High saline|warm",])+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[1], 
+              alpha=1, size=.5, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(0, 7.5)+
+  xlim(0,2100)+
+  labs(x="", y=expression(bold("Sr/Ca (mg/g)")))+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        panel.border = element_rect(fill = NA, size = 2),
+        plot.margin = margin(c(1,1,-14.5,1)),
+        axis.text.x = element_text(color = "white"),
+        axis.text.y = element_text(color = "black", face = "bold", size = 8),
+        axis.ticks.x = element_line(colour = "transparent"),
+        axis.title.y = element_text(size = 8))+
+  annotate("text", x=1050, y=7.4, label="High S, thermal constant (N=35)", 
+           size=1.8, hjust=0.5, fontface="bold")
+
+B <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Int saline|cold",])+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[2], 
+              alpha=1, size=.5, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(0, 7.5)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 2),
+        plot.margin = margin(c(1,1,-14.5,-5)),
+        axis.text.x = element_text(color = "white"),
+        axis.ticks.x = element_line(colour = "transparent"))+
+  annotate("text", x=1050, y=7.4, label="Int. S, thermal cold (N=15)", 
+           size=1.8, hjust=0.5, fontface="bold")
+
+C <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Low saline|cold",])+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[3], 
+              alpha=1, size=.5, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(0, 7.5)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 2),
+        plot.margin = margin(c(1,1,-14.5,-5)),
+        axis.text.x = element_text(color = "white"),
+        axis.ticks.x = element_line(colour = "transparent"))+
+  annotate("text", x=1050, y=7.4, label="Low S, thermal shift (N=19)", 
+           size=1.8, hjust=0.5, fontface="bold")
+
+D <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|warm",])+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[4], 
+              alpha=1, size=.5, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(0, 7.5)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 2),
+        plot.margin = margin(c(1,1,-14.5,-5)),
+        axis.text.x = element_text(color = "white"),
+        axis.ticks.x = element_line(colour = "transparent"))+
+  annotate("text", x=1050, y=7.4, label="FW high S, thermal shift (N=13)", 
+           size=1.8, hjust=0.5, fontface="bold")
+
+E <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|cold",])+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[5], 
+              alpha=1, size=.5, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(0, 7.5)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 2),
+        plot.margin = margin(c(1,1,-14.5,-5)),
+        axis.text.x = element_text(color = "white"),
+        axis.ticks.x = element_line(colour = "transparent"))+
+  annotate("text", x=1050, y=7.4, label="FW resident, thermal cold (N=4)", 
+           size=1.8, hjust=0.5, fontface="bold")
+
+A1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="High saline|warm",])+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[1], 
+              alpha=1, size=.5, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(-3, 3)+
+  xlim(0,2100)+
+  labs(x="", 
+       y=expression(bold("scaled"~delta^18*"O"~("VPDB \u2030"))))+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        panel.border = element_rect(fill = NA, size = 2),
+        plot.margin = margin(c(-14.5,1,1,1)),
+        axis.text.x = element_text(color = "black", face = "bold", size = 8),
+        axis.text.y = element_text(color = "black", face = "bold", size = 8),
+        axis.title.y = element_text(size = 8))
+
+B1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Int saline|cold",])+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[2], 
+              alpha=1, size=.5, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(-3,3)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 2),
+        plot.margin = margin(c(-14.5,1,1,-5)),
+        axis.text.x = element_text(color = "black", face = "bold", size = 8))
+
+C1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Low saline|cold",])+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[3], 
+              alpha=1, size=.5, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(-3,3)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 2),
+        plot.margin = margin(c(-14.5,1,1,-5)),
+        axis.text.x = element_text(color = "black", face = "bold", size = 8))
+
+D1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|warm",])+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[4], 
+              alpha=1, size=.5, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(-3,3)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 2),
+        plot.margin = margin(c(-14.5,1,1,-5)),
+        axis.text.x = element_text(color = "black", face = "bold", size = 8))
+
+E1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|cold",])+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[5], 
+              alpha=1, size=.5, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(-3,3)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 2),
+        plot.margin = margin(c(-14.5,1,1,-5)),
+        axis.text.x = element_text(color = "black", face = "bold",size = 8))
+
+Plot <- ggarrange(A,B,C,D,E,A1,B1,C1,D1,E1, 
+          nrow = 2, ncol = 5, 
+          widths = c(1,1,1,1,1),
+          heights = c(1.5,1.5),
+          align = "v",
+          labels = c("a","b","c","d","e"),
+          label.x = .1,
+          label.y = 1.05)
+
+png(filename = "Figures/Life-history-plots.png", 
+    width = 5000, height = 2000, res = 600)
+annotate_figure(Plot,
+                bottom = text_grob(expression(bold("Distance from core"~(mu*"m"))),
+                                   size = 8, vjust = -1, hjust = 0.35),
+                fig.lab.size = 5,
+                fig.lab.face = "bold")
+dev.off()
 ```
 
 ## Setup and cleanup of data for mixed models
