@@ -30,6 +30,7 @@ library(mvabund)
 library(MASS)
 library(flextable)
 library(gridGraphics)
+library(lubridate)
 ```
 
 ## preparation of Sr and d18O data
@@ -1097,6 +1098,11 @@ fishassign_testF <- fishassign_F%>%left_join(fishassign_F_3yr, by="ID")%>%
             clust_3=clust2.y,
             correct.assign=case_when(clust_all==clust_3~1,
                                      clust_all!=clust_3~0))
+
+write.table(fishassign_B, "Data/Pike/Bcluster_all.txt", row.names = F, sep = "\t",
+            dec = ".")
+write.table(fishassign_F, "Data/Pike/Fcluster_all.txt", row.names = F, sep = "\t",
+            dec = ".")
 ```
 
 ```{r plot Bodden proportions all, eval=FALSE}
@@ -1154,6 +1160,8 @@ Props <- data.frame(Ecotype=c("Lagoon low S, cold temperature",
                     GB=paste0(round(summary(GBpike$clust2)/nrow(GBpike)*100,1),
                               "%"),
                     Tributary=paste0(round(summary(FWpike$clust2)/nrow(FWpike)*100,
+                                           1),"%"),
+                    Total=paste0(round(summary(Allpike$clust2)/nrow(Allpike)*100,
                                            1),"%"))
 
 Propstable <- Props%>%flextable()%>%
@@ -1782,6 +1790,102 @@ write.table(Lungdata,
 
 ```
 
+```{r get clean version of growth data, include=FALSE}
+
+rm(list = ls())
+
+#read in pike data
+fishdata <- read.delim("Data/Pike/Scales_Oto_data.txt", sep = "\t", dec = ".", 
+                       header = T, stringsAsFactors = F)
+names(fishdata) <- tolower(names(fishdata))
+
+#load in age readings
+pike_increments_B <- read.delim("Data/Pike/Otolith_combo_round2.txt", 
+                              header = T, stringsAsFactors = F)
+names(pike_increments_B) <- tolower(names(pike_increments_B))
+
+pike_increments_Ana <- read.delim("Data/Pike/combined_anadromous.txt",
+                                  header = T, stringsAsFactors = F)
+names(pike_increments_Ana) <- tolower(names(pike_increments_Ana))
+
+#read in decoder
+decoder_B <- read.delim("Data/Pike/Decoding_file_05-10-21_BH-00670-90307_Otoliths.txt", header = T, stringsAsFactors = F)
+
+names(decoder_B) <- tolower(names(decoder_B))
+
+decoder_Ana <- read.delim("Data/Pike/Decoding_file_12-10-21_BH-00670-90307_Otoliths.txt", header = T, stringsAsFactors = F)
+
+names(decoder_Ana) <- tolower(names(decoder_Ana))
+
+pike_increments_B$random_id <- pike_increments_B$sample
+pike_increments_Ana$random_id <- pike_increments_Ana$sample
+
+#decode
+pike_increments_B <- pike_increments_B %>% inner_join(decoder_B, by = "random_id")
+pike_increments_Ana <- pike_increments_Ana%>%inner_join(decoder_Ana, by="random_id")
+
+pike_increments <- rbind(pike_increments_Ana, pike_increments_B)
+
+pike_inc <- pike_increments %>% inner_join(fishdata, by="id")%>%
+  transmute(ID=id,
+            age=age,
+            cohort=cohort,
+            capt=area,
+            TL=tl,
+            weigth=weight,
+            sex=sex,
+            date=lubridate::date(parse_date_time(date, "dmy")),
+            core=core,
+            i=i,
+            year=year,
+            increment=increment,
+            quality=quality)
+
+#convert inc to rad
+IDpike <- unique(pike_inc$ID)
+rad <- NULL
+for (i in 1:length(IDpike)) {
+  d <- cumsum(coalesce(pike_inc[which(pike_inc$ID == IDpike[i]), "increment"], 0)) + pike_inc[which(pike_inc$ID == IDpike[i]), "increment"]*0
+ rad <- c(rad, d)
+}
+
+pike_inc$rad <- rad
+
+write.table(pike_inc, file = "Data/Pike/Oto_increment_data_with_rad.txt",
+            sep = "\t", dec = ".", row.names = F)
+```
+
+```{r join growth measurements with cluster, include=FALSE}
+
+rm(list = ls())
+
+#read in data on increment widths
+pike_inc <- read.delim(file = "Data/Pike/Oto_increment_data_with_rad.txt",
+            sep = "\t", dec = ".", header = T, stringsAsFactors = F)
+
+#get clustering results
+fishassign_B <- read.delim(file = "Data/Pike/Bcluster_all.txt", 
+                           header = T, stringsAsFactors = F, dec = ".", sep = "\t")
+fishassign_F <- read.delim(file = "Data/Pike/Fcluster_all.txt", 
+                           header = T, stringsAsFactors = F, dec = ".", sep = "\t")
+
+allpike <- rbind(fishassign_B[,c(1:3,5)], fishassign_F)
+
+#join increment data with clustering results
+pikedat <- allpike%>%
+  transmute(ID=ID,
+            area=area,
+            clust=case_when(clust2 == "High saline|warm"~"HighS|Tconstant",
+                            clust2 == "Int saline|cold"~"IntS|Tcold",
+                            clust2 == "Low saline|cold"~"LowS|Tshift",
+                            clust2 == "FW high saline|warm"~"FWHighS|Tshift",
+                            clust2 == "FW low saline|cold"~"FWresident|Tcold"))%>%
+  inner_join(pike_inc, by = "ID")
+
+write.table(pikedat, "Data/Pike/Growthdata_clusters.txt", row.names = F,
+            sep = "\t", dec = ".")
+```
+
 ```{r shape data, include=FALSE, eval=FALSE}
 #Script to read cleaned environmental data and combine it with pike data
 rm(list = ls())
@@ -1789,18 +1893,16 @@ rm(list = ls())
 Lungdata <- read.delim("Data/Environment/LUNGdata.txt", header = T, 
                        stringsAsFactors = F, sep = "\t", dec = ".")
 
-pikedat_B <- read.delim("Data/Pike/Growthdata_Bodden-cluster.txt", 
+pikedat <- read.delim("Data/Pike/Growthdata_clusters.txt", 
                         sep = "\t", dec = ".", header = T, stringsAsFactors = F)
 
-pikedat_F <- read.delim("Data/Pike/Growthdata_Freshwater-cluster.txt", 
-                        sep = "\t", dec = ".", header = T, stringsAsFactors = F)
 
 #Clean up data frames
-pikedata_B <- pikedat_B%>%
+pikedata <- pikedat%>%
   transmute(ID=as.character(ID),
             area=area,
             capt=capt,
-            clust=as.factor(paste0("S_",clust)),
+            clust=as.factor(clust),
             age=as.integer(age),
             cohort=as.integer(cohort),
             weight=weigth,
@@ -1811,22 +1913,7 @@ pikedata_B <- pikedat_B%>%
             inc=as.numeric(increment),
             rad=as.numeric(rad))
 
-pikedata_F <- pikedat_F%>%
-  transmute(ID=as.character(ID),
-            area=area,
-            capt=capt,
-            clust=as.factor(paste0("F_",clust)),
-            age=as.integer(age),
-            cohort=as.integer(cohort),
-            weight=weigth,
-            TL=as.numeric(TL),
-            sex=as.factor(sex),
-            lifeyear=factor(i, levels = c(1:13), labels = c(1:13)),
-            year=year,
-            inc=as.numeric(increment),
-            rad=as.numeric(rad))
 #Bind together
-pikedata <- rbind(pikedata_B, pikedata_F)
 
 oto_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt",
                          header = T, dec = ".", sep = "\t",
@@ -1836,17 +1923,18 @@ oto_years <- oto_lowres%>%
   group_by(ID,year)%>%
   summarise(ID=ID,
             lifeyear=as.factor(year),
-            d18O_mean=mean(d18O),
-            res_mean=mean(res),
-            Sr_mean=mean(Sr),
-            d18O_min=min(d18O),
-            res_min=min(res),
-            Sr_min=min(Sr),
-            d18O_max=max(d18O),
-            res_max=max(res),
-            Sr_max=max(Sr))
+            d18O_mean=mean(d18O, na.rm=T),
+            res_mean=mean(res, na.rm=T),
+            Sr_mean=mean(Sr, na.rm=T),
+            d18O_min=min(d18O, na.rm=T),
+            res_min=min(res, na.rm=T),
+            Sr_min=min(Sr, na.rm=T),
+            d18O_max=max(d18O, na.rm=T),
+            res_max=max(res, na.rm=T),
+            Sr_max=max(Sr, na.rm=T))%>%
+  drop_na()
 
-pikedata <- pikedata%>%inner_join(oto_years, by=c("ID", "lifeyear"))%>%
+pikedata1 <- pikedata%>%inner_join(oto_years, by=c("ID", "lifeyear"))%>%
   transmute(ID=ID,
             waterbody=area,
             capt=capt,
@@ -1872,10 +1960,10 @@ pikedata <- pikedata%>%inner_join(oto_years, by=c("ID", "lifeyear"))%>%
   drop_na(inc,rad,year)%>%
   distinct()
 
-pikedata <- pikedata%>%left_join(Lungdata, by=c("waterbody", "year"))
+pikedata2 <- pikedata1%>%left_join(Lungdata, by=c("waterbody", "year"))
 
-write.table(pikedata, 
-            file = "Data/Pikedata.txt", 
+write.table(pikedata2, 
+            file = "Data/Pike/Pikedata2.txt", 
             sep = "\t", dec = ".", row.names = F)
 ```
 
@@ -1934,7 +2022,6 @@ hist(pikes2$inc, main = "", xlab = "Increment (um)")
 hist(pikes2$res_mean, main = "", xlab = "d18O ratio")
 hist(pikes2$Sr_mean, main = "", xlab = "Sr concentration")
 plot(0, xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
-
 ```
 
 ## Initial model
@@ -1975,8 +2062,6 @@ abline(h = 5, lwd = 3, lty = 2, col="red")
 #Test model components
 #Test random effects
 rand(pikemodel.1.0)
-
-summary(pikemodel.final)
 ```
 
 ```{r test effects age, echo=TRUE}
