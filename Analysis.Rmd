@@ -154,7 +154,7 @@ otoint_lowres <- cbind(d18O, dfE)
 ```{r covariance d18O and Sr, include=FALSE, eval=FALSE}
 #clean up
 Oto_lowres <- otoint_lowres%>%
-  filter(ID!="BH-01908")%>%
+  filter(ID!="BH-01908"&capt!="KD")%>%
   transmute(ID=ID,
             capt=capt,
             area=area,
@@ -209,6 +209,8 @@ P6 <- ggplot(Testfish6,aes(x=Sr, y=d18O))+
   theme_minimal()
 ggarrange(P1,P2,P3,P4,P5,P6)
 
+
+
 png(filename = "Figures/Correlation_d18O~Sr.png", 
     width = 3000, height = 1800, res = 600)
 ggplot(Oto_lowres,aes(x=Sr*1000, y=d18O))+
@@ -218,7 +220,7 @@ ggplot(Oto_lowres,aes(x=Sr*1000, y=d18O))+
   labs(x="Sr/Ca (mg/g)", 
        y=expression(bold(delta^18*"O"~("VPDB \u2030"))),
        title=expression(bold("Correlation of intraotolith Sr and"~delta^18*"O")))+
-  stat_smooth(method = "lm", fullrange = T, size = .8)+
+  stat_smooth(method = "lm", formula = y~exp(-x), fullrange = T, size = .8)+
   theme_classic()+
     theme(panel.grid.major = element_line(),
           axis.line = element_line(size = .5, colour = "black", linetype = 1),
@@ -238,10 +240,18 @@ subset_KD <- subset(otoint_lowres, capt=="KD")
 subset_KD$res <- NA
 otoint_lowres <- otoint_lowres%>%drop_na()%>%filter(capt!="KD")%>%filter(ID!="BH-01908")
 
+#0-model
 lm0 <- lm(d18O~1, data = otoint_lowres)
+#normal model
 lm1 <- lm(d18O~Sr, data = otoint_lowres)
+#exponential decay
+lm2 <- lm(d18O~exp(-Sr), data = otoint_lowres)
+
 anova(lm0, lm1)
+anova(lm0, lm2)
+anova(lm1, lm2)
 summary(lm1)
+
 
 otoint_lowres$res <- lm1$residuals
 otoint_lowres <- rbind(otoint_lowres, subset_KD)
@@ -528,7 +538,7 @@ plot(row_number(Srd18O[Srd18O$ID=="BH-91045",]$ID),
 save(Fgroup,Bgroup,interpol, file = "Data/Pike/Adults_element_transects.RData")
 ```
 
-## DTW-clustering
+## DTW-clustering 3 year old pike
 ```{r get best clustering method?, include=FALSE, eval=FALSE}
 rm(list = ls())
 #read in data
@@ -927,6 +937,7 @@ success <- data.frame(HighSBodden=round(1-length(summary[summary$clust=="High sa
                       Overall=round(1-length(summary[summary$lda.error==1,]$ID)/length(summary$ID),2))
 ```
 
+## DTW-clustering whole sample
 ```{r dtw data prep whole sample, include=FALSE}
 rm(list = ls())
 #read in data
