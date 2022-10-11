@@ -2215,24 +2215,25 @@ pikes2$agefact2 <- factor(pikes2$agefact,levels = c(2,1,3),
 #rename clusters
 pikes3 <- pikes2%>%
   mutate(clust2=case_when(clust=="F_HighS"~2,
-                          clust=="F_IntS"~1,
+                          clust=="F_IntS"~2,
                           clust=="F_LowS"~1,
-                          clust=="S_HighS"~3,
-                          clust=="S_IntS"~2,
+                          clust=="S_HighS"~4,
+                          clust=="S_IntS"~3,
                           clust=="S_LowS"~2))
 pikes3$clust <- factor(pikes3$clust2,
-                       levels = c(1,2,3),
+                       levels = c(1,2,3,4),
                        labels = c("Freshwater resident",
+                                  "Low salinity/thermal shift",
                                   "Saline shift/thermal shift", 
-                                  "Brackish resident/stable temperature"))
+                                  "High salinity/stable temperature"))
 
-mypallette <- viridis::viridis(3, direction = -1)
+mypallette <- viridis::viridis(4, direction = -1)
 
 #Temperature effect
 Temp <- ggplot(pikes2, aes(res_mean, log(inc), color=agefact2))+
   geom_point(size=.5)+
   stat_smooth(method = "lm", fill="gray", fullrange = T, lwd=.8)+
-  labs(x=expression(bold("scaled"~delta^18*"O"~(x%*%"standard deviation"))), 
+  labs(x=expression(bold("scaled"~delta^18*"O"~("z-score"))), 
        y=expression(bold("log increment"~(mu*"m"))),
        color="ageclass")+
   scale_color_viridis_d()+
@@ -2256,8 +2257,9 @@ Clust <- ggplot(pikes3[pikes$lifeyear<=7,], aes(factor(lifeyear), log(inc), colo
   labs(x="Age (years)", y=expression(bold("increment"~(mu*"m"))), color="ecotype")+
   scale_x_discrete(breaks=c("1","2","3","4","5","6","7"))+
   scale_color_manual(breaks = c("Freshwater resident",
+                                "Low salinity/thermal shift",
                                   "Saline shift/thermal shift", 
-                                  "Brackish resident/stable temperature"),
+                                  "High salinity/stable temperature"),
                      values = mypallette)+
   theme_classic()+
   theme(panel.grid.major = element_line(),
