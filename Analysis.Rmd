@@ -821,10 +821,10 @@ rm(list = ls())
 #read in data
 load("Data/Pike/Adults_element_transects.RData")
 
-fishassign_B <- read.delim("Data/Pike/Year_3_Bclusters.txt", header = T,
+fishassign_B <- read.delim("Data/Pike/Bodden_clusters_3-year.txt", header = T,
                            stringsAsFactors = F, sep = "\t",dec=".")
 
-fishassign_F <- read.delim("Data/Pike/Year_3_Fclusters.txt", header = T,
+fishassign_F <- read.delim("Data/Pike/FW_clusters_3-year.txt", header = T,
                            stringsAsFactors = F, sep = "\t",dec=".")
 
 #transform data to all positive
