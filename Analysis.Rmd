@@ -2289,7 +2289,7 @@ rm(list = ls())
 # load data
 pikedata <- read.delim("Data/Pike/Pike_TL_backcalulated.txt", header = T, stringsAsFactors = F)
 
-priors <- read.delim("Data/Priors_pike.csv", sep = ";", 
+priors <- read.delim("Data/Pike/Priors_pike.csv", sep = ";", 
                      header = T, stringsAsFactors = F)
 
 pikedata <- pikedata %>% filter(area != "KD") %>% filter(id != "BH-01908")
@@ -2300,11 +2300,12 @@ growthdata <- pikedata %>%
             sex = sex,
             weight = weight,
             TL = TL,
-            Length_at_age = back_length,
+            rad = rad,
             date = date,
             area = area,
             age = age,
             agei = agei)
+
 #Binary variable for sex
 growthdata$sex <- ifelse(growthdata$sex == "f", 0, 1)
 
