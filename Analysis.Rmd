@@ -368,7 +368,7 @@ dev.off()
 ```
 
 ## Model-based preclustering
-```{r preclustering prep, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+```{r preclustering prep, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE, eval=FALSE}
 rm(list = ls())
 #read in data
 # oto_highres <- read.delim("Data/Otoliths/Oto_d18O-to-LA_interpolation.txt",
@@ -401,7 +401,7 @@ Elemeans <- oto_lowres%>%
 Elemeans[,3:8] <- scale(Elemeans[,3:8])
 ```
 
-```{r preclustering, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+```{r preclustering, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE, eval=FALSE}
 #Visual examination of distinction potential
 X <- data.matrix(Elemeans[,3:8])
 class <- factor(Elemeans$area)
@@ -441,7 +441,7 @@ Elemeans$clust <- as.factor(fit2$classification)
 ClustID <- Elemeans[,c(1,9)]
 ```
 
-```{r plot preclustering results, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+```{r plot preclustering results, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE, eval=FALSE}
 #Plot cluster results
 mypallette <- viridis::viridis(3, direction = 1)
 
@@ -616,7 +616,7 @@ comparison <- compare_clusterings(series, types = c("h", "t", "f"), configs = cf
 
 ```
 
-```{r dtw data prep 3-year old, include=FALSE}
+```{r dtw data prep 3-year old, include=FALSE, eval=FALSE}
 rm(list = ls())
 #read in data
 load("Data/Pike/Adults_element_transects.RData")
@@ -686,7 +686,7 @@ save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, year1, year2, year3, interpol
      file = "Data/Pike/Adults_element_transects_3-year.RData")
 ```
 
-```{r DTW clustering 3 year olds, include=FALSE}
+```{r DTW clustering 3 year olds, include=FALSE, eval=FALSE}
 #cluster Bodden with cutoff test
 clust_B <- tsclust(series = Bseries, type = "hierarchical",
                   k = 2L:6L,centroid = dba,
@@ -727,7 +727,7 @@ plot(clust_F$k_2, type="centroid", linetype="solid", cex=1)+
         plot.title = element_text(size = 25, hjust = 0.5))
 ```
 
-```{r cluster assignment 3 year olds, include=FALSE}
+```{r cluster assignment 3 year olds, include=FALSE, eval=FALSE}
 #assign clusters to fish
 fishassign_B2 <- data.frame(ID=names(Bseries), 
                             clust2=factor(clust_B$k_2@cluster, 
@@ -938,7 +938,7 @@ success <- data.frame(HighSBodden=round(1-length(summary[summary$clust=="High sa
 ```
 
 ## DTW-clustering whole sample
-```{r dtw data prep whole sample, include=FALSE}
+```{r dtw data prep whole sample, include=FALSE, eval=FALSE}
 rm(list = ls())
 #read in data
 load("Data/Pike/Adults_element_transects.RData")
@@ -1000,7 +1000,7 @@ save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol,
      file = "Data/Pike/Adults_element_transects_all.RData")
 ```
 
-```{r DTW clustering all, include=FALSE}
+```{r DTW clustering all, include=FALSE, eval=FALSE}
 #cluster Bodden with cutoff test
 clust_B <- tsclust(series = Bseries, type = "hierarchical",
                   k = 2L:6L,centroid = dba,
@@ -1042,7 +1042,7 @@ plot(clust_F$k_3, type="centroid", linetype="solid", cex=2)+
         plot.title = element_text(size = 25, hjust = 0.5))
 ```
 
-```{r cluster assignment all, include=FALSE}
+```{r cluster assignment all, include=FALSE, eval=FALSE}
 #assign clusters to fish
 fishassign_B2 <- data.frame(ID=names(Bseries), 
                             clust2=factor(clust_B$k_3@cluster, 
@@ -1188,7 +1188,7 @@ Propstable <- Props%>%flextable()%>%
 save_as_docx(Propstable, path = "Tables/Proportions_Ecotypes.docx")
 ```
 
-```{r dtw graphics, include=FALSE}
+```{r dtw graphics, include=FALSE, eval=FALSE}
 Bgroup.clus <- Bgroup%>%inner_join(fishassign_B2, by="ID")
 Fgroup.clus <- Fgroup%>%inner_join(fishassign_F2, by="ID")
 
@@ -1467,7 +1467,6 @@ dev.off()
 ```
 
 ## Setup and cleanup of data for mixed models
-
 ```{r LUNG cleanup for GLMM, include=FALSE, eval=FALSE}
 # Script to read in and clean up LUNG data tables
 rm(list = ls())
@@ -1844,7 +1843,7 @@ write.table(Lungdata,
 
 ```
 
-```{r get clean version of growth data, include=FALSE}
+```{r get clean version of growth data, include=FALSE, eval=FALSE}
 
 rm(list = ls())
 
@@ -1909,7 +1908,7 @@ write.table(pike_inc, file = "Data/Pike/Oto_increment_data_with_rad.txt",
             sep = "\t", dec = ".", row.names = F)
 ```
 
-```{r join growth measurements with cluster, include=FALSE}
+```{r join growth measurements with cluster, include=FALSE, eval=FALSE}
 
 #rm(list = ls())
 
@@ -2023,8 +2022,7 @@ write.table(pikedata2,
 ```
 
 ## Prepare data for modelling
-
-```{r project start, include=FALSE, message=FALSE, warning=FALSE, echo=FALSE}
+```{r project start, include=FALSE, message=FALSE, warning=FALSE, echo=FALSE, eval=FALSE}
 rm(list = ls())
 
 pikes <- read.delim("Data/Pike/Pikedata.txt", header = T, stringsAsFactors = F,
@@ -2055,8 +2053,7 @@ str(pikes2)
 ```
 
 ## Data exploration
-
-```{r Exploration, include=FALSE, echo=FALSE, fig.height=6, fig.width=8}
+```{r Exploration, include=FALSE, echo=FALSE, eval=FALSE, fig.height=6, fig.width=8}
 #Exploration
 
 par(mfrow=c(1,2))
@@ -2064,7 +2061,7 @@ dotchart(pikes2$inc, color = pikes2$clust, main = "Color = Ecotype(Cluster)")
 dotchart(pikes2$inc, color = pikes2$sex, main = "Color = Sex")
 ```
 
-```{r Exploration, include=FALSE, echo=FALSE, fig.height=5, fig.width=8}
+```{r Exploration, include=FALSE, echo=FALSE, eval=FALSE, fig.height=5, fig.width=8}
 par(mfrow=c(3,2))
 boxplot(pikes2$inc~pikes2$lifeyear, ylab ="Growth increment", xlab = "Age")
 boxplot(pikes2$inc~pikes2$clust, ylab ="Growth increment", xlab = "Ecotype")
@@ -2074,7 +2071,7 @@ plot(pikes2$inc~pikes2$Sr_mean, ylab ="Growth increment", xlab = "Sr")
 plot(0, xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
 ```
 
-```{r Exploration, include=FALSE, echo=FALSE, fig.height=5, fig.width=8}
+```{r Exploration, include=FALSE, echo=FALSE, eval=FALSE, fig.height=5, fig.width=8}
 par(mfrow = c(2,2))
 hist(pikes2$inc, main = "", xlab = "Increment (um)")
 hist(pikes2$res_mean, main = "", xlab = "d18O ratio")
@@ -2085,7 +2082,7 @@ plot(0, xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
 ## Initial model
 $$log10(Inc) \sim Age*cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc/ID)$$
 
-```{r exclude random effect of ID}
+```{r exclude random effect of ID, include=FALSE, eval=FALSE}
 #Run model
 pikemodel.1 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
                         Sr_mean+sex+(1|waterbody/ID), 
@@ -2102,7 +2099,7 @@ summary(pikemodel.1.0)
 ## New model
 $$log10(Inc) \sim Age*d18Ores+Age*cluster+Age^2+Srmean+Sex+(1|Location)$$
 
-```{r Look at variance inflation factors, echo=TRUE}
+```{r Look at variance inflation factors, echo=TRUE, eval=FALSE}
 #Look at variance inflation factors
 pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
                       Sr_mean+sex+(1|waterbody), 
@@ -2116,13 +2113,13 @@ abline(h = 5, lwd = 3, lty = 2, col="red")
 ```
 
 ## Log-likelihood ratio tests
-```{r test random effects, echo=TRUE}
+```{r test random effects, echo=TRUE, eval=FALSE}
 #Test model components
 #Test random effects
 rand(pikemodel.1.0)
 ```
 
-```{r test effects age, echo=TRUE}
+```{r test effects age, echo=TRUE, eval=FALSE}
 #Remove age quadratic term
 pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
                       Sr_mean+sex+(1|waterbody), 
@@ -2136,7 +2133,7 @@ anova(pikemodel.1.0, pikemodel.noage)
 #age is significant
 ```
 
-```{r test cluster effects}
+```{r test cluster effects, eval=FALSE}
 pikemodel.noclust <- lmer(log10(inc)~lifeyear*res_mean+clust+I(lifeyear^2)+
                       Sr_mean+sex+(1|waterbody), 
                       REML = F, data = pikes2)
@@ -2144,7 +2141,7 @@ anova(pikemodel.1.0, pikemodel.noclust)
 #age*cluster is significant
 ```
 
-```{r test effects d18O, echo=TRUE}
+```{r test effects d18O, echo=TRUE, eval=FALSE}
 #Remove d18O
 pikemodel.nores <- lmer(log10(inc)~lifeyear*clust+res_mean+I(lifeyear^2)+
                       Sr_mean+sex+(1|waterbody), 
@@ -2153,7 +2150,7 @@ anova(pikemodel.1.0, pikemodel.nores)
 #relative d18O significant
 ```
 
-```{r test effects Sr, echo=TRUE}
+```{r test effects Sr, echo=TRUE, eval=FALSE}
 #Remove Sr
 pikemodel.noSr <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
                       sex+(1|waterbody), 
@@ -2162,7 +2159,7 @@ anova(pikemodel.1.0, pikemodel.noSr)
 #Sr not significant
 ```
 
-```{r test effects sex, echo=TRUE}
+```{r test effects sex, echo=TRUE, eval=FALSE}
 #Remove sex
 pikemodel.nosex <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
                       Sr_mean+(1|waterbody), 
@@ -2172,13 +2169,13 @@ anova(pikemodel.1.0, pikemodel.nosex)
 ```
 
 ## Results
-```{r table, out.width="120%", dpi=300, echo=FALSE, message=FALSE}
+```{r table, out.width="120%", dpi=300, echo=FALSE, eval=FALSE, message=FALSE}
 summary(pikemodel.final)
 tab_model(pikemodel.final, show.fstat = T, show.loglik = T, digits.re = 20)
 ```
 
 ## Model validation
-```{r model validation, echo=FALSE}
+```{r model validation, echo=FALSE, eval=FALSE}
 #validation
 pikemodel.final <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
                       Sr_mean+sex+(1|waterbody), 
@@ -2203,7 +2200,7 @@ r.squaredGLMM(pikemodel.final)
 ```
 
 ## Figure main effects
-```{r temp & clust effect figure}
+```{r temp & clust effect figure, eval=FALSE}
 #factorize temperature
 pikes2$agefact <- ifelse(pikes2$lifeyear<3, 2, 
                          ifelse(pikes2$lifeyear>2&pikes2$lifeyear<7, 1,
@@ -2283,4 +2280,96 @@ png(filename = "Figures/Interaction_effects_growth.png",
     width = 4500, height = 2000, res = 600)
 annotate_figure(Fig, top = text_grob("Effects of relative lifelong temperature and ecotype on pike growth", color = "black", face = "bold", size = 15, vjust = 1))
 dev.off()
+```
+
+## VB growth models ecotypes
+```{r data prep, include=FALSE}
+rm(list = ls())
+
+# load data
+pikedata <- read.delim("Data/Pike/Pike_TL_backcalulated.txt", header = T, stringsAsFactors = F)
+
+priors <- read.delim("Data/Priors_pike.csv", sep = ";", 
+                     header = T, stringsAsFactors = F)
+
+pikedata <- pikedata %>% filter(area != "KD") %>% filter(id != "BH-01908")
+
+# Cleanup
+growthdata <- pikedata %>%
+  transmute(id = as.integer(substr(pikedata$id,4,9)),
+            sex = sex,
+            weight = weight,
+            TL = TL,
+            Length_at_age = back_length,
+            date = date,
+            area = area,
+            age = age,
+            agei = agei)
+#Binary variable for sex
+growthdata$sex <- ifelse(growthdata$sex == "f", 0, 1)
+
+IDpikef <- unique(growthdata[growthdata$sex==0,]$id)
+
+f <- NULL
+
+for (i in 1:length(IDpikef)) {
+ d <- ifelse(growthdata[which(growthdata$id==IDpikef[i]),"sex"]==0,i,NA)
+ f <- c(f,d)
+}
+
+IDpikem <- unique(growthdata[growthdata$sex==1,]$id)
+
+m <- NULL
+
+for (i in 1:length(IDpikem)) {
+ b <- ifelse(growthdata[which(growthdata$id==IDpikem[i]),"sex"]==1,i,NA)
+ m <- c(m,b)
+}
+
+growthdata$groupID <- NA
+growthdata[growthdata$sex==0,]$groupID <- f
+growthdata[growthdata$sex==1,]$groupID <- m
+
+standata_growth = list(
+  Lengthi = growthdata$Length_at_age/10,
+  Agei = growthdata$agei,
+  Sexbin = growthdata$sex,
+  N = nrow(growthdata),
+  alinf = 150^2/5^2,
+  blinf = 150/5^2,
+  n_groupmax = max(growthdata$groupID),
+  n_group = max(growthdata$groupID[growthdata$sex==0]),
+  n_group1 = max(growthdata$groupID[growthdata$sex==1]),
+  group_id = growthdata$groupID# smth wrong here
+)
+
+length(unique(growthdata$id))
+```
+
+```{r individual Growth analysis, include=FALSE}
+# Script to fit chosen growth curve to age data
+
+
+stancode <- ("Growth_model_hierarchical3.stan")
+
+fit = stan(stancode, iter = 40000, data = standata_growth,
+           control = list(adapt_delta = 0.9, max_treedepth = 10))
+
+save(fit, file = "Data/Fit_individual_GM")
+
+print(fit, pars = c("LInf", "LInf1", "tZero", "tZero1", "k_mu", "k1_mu", "k_sig", "k1_sig", "phi" ))
+
+samples <- as.matrix(fit, pars=c("LInf", "LInf1", "k", "k1", "tZero", "tZero1"))
+head(samples)
+
+sample_LInf <- as.array(fit, pars = c("LInf", "LInf1"))
+mcmc_intervals(sample_LInf)
+sample_k <- as.array(fit, pars = c("k", "k1"))
+mcmc_intervals(sample_k)
+sample_tZero <- as.array(fit, pars = c("tZero", "tZero1"))
+mcmc_intervals(sample_tZero)
+sample_phi <- as.array(fit, pars = "phi")
+mcmc_intervals(sample_phi)
+
+summary(fit, pars = "LInf")
 ```
