@@ -31,6 +31,10 @@ library(MASS)
 library(flextable)
 library(gridGraphics)
 library(lubridate)
+library(loo)
+library("rstan")
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
 ```
 
 ## preparation of Sr and d18O data
@@ -2300,7 +2304,7 @@ growthdata <- pikedata %>%
             sex = sex,
             weight = weight,
             TL = TL,
-            rad = rad,
+            radmm = rad/1000,
             date = date,
             area = area,
             age = age,
@@ -2332,28 +2336,24 @@ growthdata[growthdata$sex==0,]$groupID <- f
 growthdata[growthdata$sex==1,]$groupID <- m
 
 standata_growth = list(
-  Lengthi = growthdata$Length_at_age/10,
+  Radmm = growthdata$rad,
   Agei = growthdata$agei,
   Sexbin = growthdata$sex,
   N = nrow(growthdata),
-  alinf = 150^2/5^2,
-  blinf = 150/5^2,
-  n_groupmax = max(growthdata$groupID),
-  n_group = max(growthdata$groupID[growthdata$sex==0]),
-  n_group1 = max(growthdata$groupID[growthdata$sex==1]),
-  group_id = growthdata$groupID# smth wrong here
+  alinf = 2.5^2/0.3^2,
+  blinf = 2.5/0.3^2,
+  n_groupmax = as.integer(length(unique(growthdata[growthdata$sex==0,]$id))),
+  n_group = as.integer(length(unique(growthdata[growthdata$sex==0,]$id))),
+  n_group1 = as.integer(length(unique(growthdata[growthdata$sex==1,]$id))),
+  group_id = growthdata$id
 )
-
-length(unique(growthdata$id))
 ```
 
 ```{r individual Growth analysis, include=FALSE}
-# Script to fit chosen growth curve to age data
+# Script to fit individual-level growth curve
+stancode <- ("Data/Stancode/Growth_model_hierarchical3.stan")
 
-
-stancode <- ("Growth_model_hierarchical3.stan")
-
-fit = stan(stancode, iter = 40000, data = standata_growth,
+fit = stan(stancode, iter = 200, data = standata_growth,
            control = list(adapt_delta = 0.9, max_treedepth = 10))
 
 save(fit, file = "Data/Fit_individual_GM")

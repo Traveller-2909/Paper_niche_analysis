@@ -4,7 +4,7 @@ data {
   
   //data vectors
   vector<lower=0, upper=13> [N]Agei;
-  vector<lower=0> [N]Lengthi;
+  vector<lower=0> [N]Radmm;
   real<lower=0> alinf;
   real<lower=0> blinf;
   
@@ -48,7 +48,7 @@ transformed parameters{
 }
 
 model {
-  Lengthi ~ gamma(alpha, beta);
+  Radmm ~ gamma(alpha, beta);
   LInf ~ gamma(alinf, blinf); 
   LInf1 ~ gamma(alinf, blinf); 
   k ~ normal(k_mu, k_sig); 
