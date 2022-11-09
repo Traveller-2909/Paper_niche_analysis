@@ -782,7 +782,7 @@ mypallette <- viridis::viridis(3, direction = -1)
 #Plot Bodden proportions
 
 #png(filename = "C:/Users/timor/Nextcloud2/Timo/BODDENHECHT/Chapter 2/Stats/Niche analysis/Figures/Clusterassign.jpg", width = 2400, height = 800)
-ggplot(fishassign_B, aes(reorder(area.x, areaorder.x), fill=clust2))+
+ggplot(fishassign_B_3yr, aes(reorder(area.x, areaorder.x), fill=clust2))+
   geom_bar(position = "fill", width = .5)+theme_minimal()+
   labs(x="", y="proportion", fill="assigned cluster")+
   scale_fill_manual(breaks=c("Low saline|cold",
@@ -797,7 +797,7 @@ ggplot(fishassign_B, aes(reorder(area.x, areaorder.x), fill=clust2))+
 #dev.off()
 
 #Plot FW proportions
-ggplot(fishassign_F, aes(capt, fill=clust2))+
+ggplot(fishassign_F_3yr, aes(capt, fill=clust2))+
   geom_bar(position = "fill", width = .5)+theme_minimal()+
   labs(x="", y="proportion", fill="assigned cluster")+
   scale_fill_manual(breaks=c("FW low saline|cold",
