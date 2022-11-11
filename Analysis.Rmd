@@ -2313,27 +2313,22 @@ growthdata <- pikedata %>%
 #Binary variable for sex
 growthdata$sex <- ifelse(growthdata$sex == "f", 0, 1)
 
-IDpikef <- unique(growthdata[growthdata$sex==0,]$id)
+#ID2 variable
+IDfemale <- growthdata %>% filter(sex==0)%>%
+  transmute(id=id)%>%
+  arrange(id)%>%
+  distinct()%>%
+  mutate(ID2=seq(1,nrow(IDfemale),1))
 
-f <- NULL
+IDmale <- growthdata %>% filter(sex==1)%>%
+  transmute(id=id)%>%
+  arrange(id)%>%
+  distinct()%>%
+  mutate(ID2=seq(1,nrow(IDmale),1))
 
-for (i in 1:length(IDpikef)) {
- d <- ifelse(growthdata[which(growthdata$id==IDpikef[i]),"sex"]==0,i,NA)
- f <- c(f,d)
-}
+IDall <- rbind(IDfemale, IDmale)
 
-IDpikem <- unique(growthdata[growthdata$sex==1,]$id)
-
-m <- NULL
-
-for (i in 1:length(IDpikem)) {
- b <- ifelse(growthdata[which(growthdata$id==IDpikem[i]),"sex"]==1,i,NA)
- m <- c(m,b)
-}
-
-growthdata$groupID <- NA
-growthdata[growthdata$sex==0,]$groupID <- f
-growthdata[growthdata$sex==1,]$groupID <- m
+growthdata <- growthdata %>% left_join(IDall, by="id")
 
 standata_growth = list(
   Radmm = growthdata$rad,
@@ -2342,10 +2337,10 @@ standata_growth = list(
   N = nrow(growthdata),
   alinf = 2.5^2/0.3^2,
   blinf = 2.5/0.3^2,
-  n_groupmax = as.integer(length(unique(growthdata[growthdata$sex==0,]$id))),
-  n_group = as.integer(length(unique(growthdata[growthdata$sex==0,]$id))),
-  n_group1 = as.integer(length(unique(growthdata[growthdata$sex==1,]$id))),
-  group_id = growthdata$id
+  n_groupmax = as.integer(max(growthdata[growthdata$sex==0,]$ID2)),
+  n_group1 = as.integer(max(growthdata[growthdata$sex==0,]$ID2)),
+  n_group2 = as.integer(max(growthdata[growthdata$sex==1,]$ID2)),
+  group_id = growthdata$ID2
 )
 ```
 
@@ -2353,12 +2348,12 @@ standata_growth = list(
 # Script to fit individual-level growth curve
 stancode <- ("Data/Stancode/Growth_model_hierarchical3.stan")
 
-fit = stan(stancode, iter = 200, data = standata_growth,
+fit = stan(stancode, iter = 500, data = standata_growth,
            control = list(adapt_delta = 0.9, max_treedepth = 10))
 
 save(fit, file = "Data/Fit_individual_GM")
 
-print(fit, pars = c("LInf", "LInf1", "tZero", "tZero1", "k_mu", "k1_mu", "k_sig", "k1_sig", "phi" ))
+print(fit, pars = c("LInf1", "LInf2", "tZero1", "tZero2", "k1_mu", "k2_mu", "k1_sig", "k2_sig", "phi" ))
 
 samples <- as.matrix(fit, pars=c("LInf", "LInf1", "k", "k1", "tZero", "tZero1"))
 head(samples)

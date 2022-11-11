@@ -10,25 +10,25 @@ data {
   
   //groups
   int<lower=1> n_groupmax;
-  int<lower=1> n_group;
   int<lower=1> n_group1;
+  int<lower=1> n_group2;
   int<lower=1, upper=n_groupmax> group_id [N];
   int<lower=0, upper=1> Sexbin[N];
 }
 
 parameters {
-  real<lower=0> LInf;
   real<lower=0> LInf1;
+  real<lower=0> LInf2;
   real<lower=0> phi;
-  vector<lower=0> [n_group] k;
   vector<lower=0> [n_group1] k1;
-  real <upper=0>tZero; 
-  real <upper=0>tZero1;
+  vector<lower=0> [n_group2] k2;
+  real <upper=0>tZero1; 
+  real <upper=0>tZero2;
   //hyperprameters
-  real<lower=0> k_mu;
-  real<lower=0> k_sig;
   real<lower=0> k1_mu;
   real<lower=0> k1_sig;
+  real<lower=0> k2_mu;
+  real<lower=0> k2_sig;
   }
 transformed parameters{
   vector <lower = 0> [N] mu;
@@ -37,9 +37,9 @@ transformed parameters{
 	
 	for(i in 1:N){
 	  if(Sexbin[i]==0){
-	    mu[i] = LInf*(1-exp(-k[group_id[i]]*(Agei[i]-tZero)));
+	    mu[i] = LInf1*(1-exp(-k1[group_id[i]]*(Agei[i]-tZero1)));
 	  }
-	  else{mu[i] = LInf1*(1-exp(-k1[group_id[i]]*(Agei[i]-tZero1)));
+	  else{mu[i] = LInf2*(1-exp(-k2[group_id[i]]*(Agei[i]-tZero2)));
 	  }
 	}
 
@@ -49,17 +49,17 @@ transformed parameters{
 
 model {
   Radmm ~ gamma(alpha, beta);
-  LInf ~ gamma(alinf, blinf); 
   LInf1 ~ gamma(alinf, blinf); 
-  k ~ normal(k_mu, k_sig); 
-  k1 ~ normal(k1_mu, k1_sig);
-  tZero ~ cauchy(0,5);
+  LInf2 ~ gamma(alinf, blinf); 
+  k1 ~ normal(k1_mu, k1_sig); 
+  k2 ~ normal(k2_mu, k2_sig);
   tZero1 ~ cauchy(0,5);
+  tZero2 ~ cauchy(0,5);
   phi~gamma(0.01, 0.01);
   //hyperpriors
-  k_mu ~ gamma(0.01, 0.01);
-  k_sig ~ gamma(0.01, 0.01);
   k1_mu ~ gamma(0.01, 0.01);
   k1_sig ~ gamma(0.01, 0.01);
+  k2_mu ~ gamma(0.01, 0.01);
+  k2_sig ~ gamma(0.01, 0.01);
   }
 
