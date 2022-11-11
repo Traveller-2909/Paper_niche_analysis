@@ -32,6 +32,7 @@ library(flextable)
 library(gridGraphics)
 library(lubridate)
 library(loo)
+library(bayesplot)
 library("rstan")
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
@@ -2335,8 +2336,8 @@ standata_growth = list(
   Agei = growthdata$agei,
   Sexbin = growthdata$sex,
   N = nrow(growthdata),
-  alinf = 2.5^2/0.3^2,
-  blinf = 2.5/0.3^2,
+  mu_linf = 2.5,
+  sig_linf = 0.25,
   n_groupmax = as.integer(max(growthdata[growthdata$sex==0,]$ID2)),
   n_group1 = as.integer(max(growthdata[growthdata$sex==0,]$ID2)),
   n_group2 = as.integer(max(growthdata[growthdata$sex==1,]$ID2)),
@@ -2348,10 +2349,10 @@ standata_growth = list(
 # Script to fit individual-level growth curve
 stancode <- ("Data/Stancode/Growth_model_hierarchical3.stan")
 
-fit = stan(stancode, iter = 500, data = standata_growth,
+fit = stan(stancode, iter = 40000, data = standata_growth,
            control = list(adapt_delta = 0.9, max_treedepth = 10))
 
-save(fit, file = "Data/Fit_individual_GM")
+save(fit, file = "Data/Pike/Fit_individual_GM.RData")
 
 print(fit, pars = c("LInf1", "LInf2", "tZero1", "tZero2", "k1_mu", "k2_mu", "k1_sig", "k2_sig", "phi" ))
 
@@ -2367,5 +2368,78 @@ mcmc_intervals(sample_tZero)
 sample_phi <- as.array(fit, pars = "phi")
 mcmc_intervals(sample_phi)
 
-summary(fit, pars = "LInf")
+summary(fit, pars = "LInf1")
 ```
+
+```{r individual Growth analysis evaluation}
+#Evaluation of Stan model for individual fish
+#write data matrix for plotting
+samples <- as.matrix(fit, pars=c("LInf1","LInf2","k1_mu","k1_sig","k2_mu","k2_sig","tZero1", "tZero2"))
+head(samples)
+
+#write arrays for eval
+sample_LInf <- as.array(fit, pars = c("LInf1", "LInf2"))
+sample_k <- as.array(fit, pars = c("k1", "k2"))
+sample_tZero <- as.array(fit, pars = c("tZero1", "tZero2"))
+sample_phi <- as.array(fit, pars = "phi")
+
+#Look at parameter space with intervals
+mcmc_intervals(sample_LInf)
+mcmc_intervals(sample_k)
+mcmc_intervals(sample_tZero)
+mcmc_intervals(sample_phi)
+
+#Look at summary stats
+summary(fit, pars = c("LInf1","LInf2"))
+summary(fit, pars = c("k1_mu","k2_mu"))
+summary(fit, pars = c("tZero1","tZero2"))
+summary(fit, pars = c("phi"))
+
+#MCMC combo plots
+mcmc_combo(samples, c("hist", "trace"), pars = c("LInf1", "LInf2"))
+mcmc_combo(samples, c("hist", "trace"), pars = c("tZero1", "tZero2"))
+mcmc_combo(samples, c("hist", "trace"), pars = c("k1_mu", "k2_mu"))
+
+#Pairs plots
+pairs(fit, pars = c("LInf1", "k1_mu", "k1_sig", "tZero1"))
+#Not ideal, maybe thin
+pairs(fit, pars = c("LInf2", "k2_mu", "k2_sig", "tZero2"))
+#same
+```
+
+```{r individual Growth analysis plotting}
+#prediction function
+Incpredict<- function(pars, Agei){
+  pars[1]*(1-exp(-pars[2]*(Agei-pars[3])))
+}
+
+Pred1 <- t(apply(samples[, c(1, 3, 7)], 1, Incpredict, Agei = 1:20))
+Pred2 <- t(apply(samples[, c(2, 5, 8)], 1, Incpredict, Agei = 1:20))
+
+Predtotal <- rbind(Pred1, Pred2)
+
+#Make quantiles
+Quantile1 <- data.frame(t(apply(Pred1, 2, quantile, c(0.5, 0.05, 0.95))))
+colnames(Quantile1) <- c("median", "lower", "upper")
+Quantile1$Agei <- c(1:20)
+Quantile2 <- data.frame(t(apply(Pred2, 2, quantile, c(0.5, 0.05, 0.95))))
+colnames(Quantile2) <- c("median", "lower", "upper")
+Quantile2$Agei <- c(1:20)
+
+Quantileplot <- ggplot() +
+  geom_ribbon(data = Quantile1, aes(x = Agei, ymin = lower, ymax = upper), 
+              alpha = 0.3, fill = "blue")+
+  geom_line(data = Quantile1, aes(x = Agei, y = median), color = "blue")+
+  geom_ribbon(data = Quantile2, aes(x = Agei, ymin = lower, ymax = upper), 
+              alpha = 0.3, fill = "red")+
+  geom_line(data = Quantile2, aes(x = Agei, y = median), color = "red")+
+  geom_point(data = growthdata[growthdata$sex==0,], 
+             aes(x = age, y = radmm), color="blue")+
+  geom_point(data = growthdata[growthdata$sex==1,], 
+             aes(x = age, y = radmm), color="red")+
+  theme_minimal()
+
+Quantileplot
+```
+
+

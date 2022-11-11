@@ -5,8 +5,8 @@ data {
   //data vectors
   vector<lower=0, upper=13> [N]Agei;
   vector<lower=0> [N]Radmm;
-  real<lower=0> alinf;
-  real<lower=0> blinf;
+  real<lower=0> mu_linf;
+  real<lower=0> sig_linf;
   
   //groups
   int<lower=1> n_groupmax;
@@ -49,8 +49,8 @@ transformed parameters{
 
 model {
   Radmm ~ gamma(alpha, beta);
-  LInf1 ~ gamma(alinf, blinf); 
-  LInf2 ~ gamma(alinf, blinf); 
+  LInf1 ~ normal(mu_linf, sig_linf); 
+  LInf2 ~ normal(mu_linf, sig_linf); 
   k1 ~ normal(k1_mu, k1_sig); 
   k2 ~ normal(k2_mu, k2_sig);
   tZero1 ~ cauchy(0,5);
