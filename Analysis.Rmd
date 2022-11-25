@@ -1021,10 +1021,12 @@ for (i in 1:length(IDOto)) {
 names(Fseries) <- c(IDOto)
 
 save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol,
-     file = "Data/Pike/Adults_element_transects_all.RData")
+     file = "Data/Pike/Adults_element_transects_prep.RData")
 ```
 
 ```{r DTW clustering all, include=FALSE, eval=FALSE}
+load("Data/Pike/Adults_element_transects_prep.RData")
+
 #cluster Bodden with cutoff test
 clust_B <- tsclust(series = Bseries, type = "hierarchical",
                   k = 2L:6L,centroid = dba,
@@ -1064,9 +1066,13 @@ plot(clust_F$k_3, type="centroid", linetype="solid", cex=2)+
   theme(axis.text = element_text(size = 25, color="black"),
         axis.title = element_text(size = 25),
         plot.title = element_text(size = 25, hjust = 0.5))
+
+save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol, clust_B, clust_F,
+     file = "Data/Pike/Adults_element_transects_all.RData")
 ```
 
 ```{r cluster assignment all, include=FALSE, eval=FALSE}
+load("Data/Pike/Adults_element_transects_all.RData")
 #assign clusters to fish
 fishassign_B2 <- data.frame(ID=names(Bseries), 
                             clust2=factor(clust_B$k_3@cluster, 
@@ -1140,6 +1146,10 @@ write.table(fishassign_B, "Data/Pike/Bcluster_all.txt", row.names = F, sep = "\t
             dec = ".")
 write.table(fishassign_F, "Data/Pike/Fcluster_all.txt", row.names = F, sep = "\t",
             dec = ".")
+
+save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol, clust_B, clust_F,
+     fishassign_B2, fishassign_F2,
+     file = "Data/Pike/Adults_element_transects_all.RData")
 ```
 
 ```{r plot Bodden proportions all, eval=FALSE}
@@ -1212,7 +1222,9 @@ Propstable <- Props%>%flextable()%>%
 save_as_docx(Propstable, path = "Tables/Proportions_Ecotypes.docx")
 ```
 
-```{r dtw graphics, include=FALSE, eval=FALSE}
+```{r dtw graphics lagoon, include=FALSE, eval=FALSE}
+load("Data/Pike/Adults_element_transects_all.RData")
+
 Bgroup.clus <- Bgroup%>%inner_join(fishassign_B2, by="ID")
 Fgroup.clus <- Fgroup%>%inner_join(fishassign_F2, by="ID")
 
@@ -1229,29 +1241,31 @@ agebreaks.label <- as.character(seq(1,11,1))
 mypallette <- viridis::viridis(6, direction = 1)
 
 A <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="High saline|warm",])+
-  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[1], 
-              alpha=1, size=.5, method = "gam")+
+              alpha=1, size=.3, method = "gam")+
   scale_color_viridis_d()+
   theme_classic()+
   ylim(0, 7.5)+
   xlim(0,2100)+
   labs(x="", y=expression(bold("Sr/Ca (mg/g)")))+
-  theme(legend.position = "none",
+  theme(legend.position = "none", 
         panel.grid.major.y = element_line(),
-        panel.border = element_rect(fill = NA, size = 2),
-        plot.margin = margin(c(1,1,-14.5,1)),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(15,1,-27.5,-5)),
         axis.text.x = element_text(color = "white"),
         axis.text.y = element_text(color = "black", face = "bold", size = 8),
         axis.ticks.x = element_line(colour = "transparent"),
-        axis.title.y = element_text(size = 8))+
-  annotate("text", x=1050, y=7.4, label="High S, thermal constant (N=35)", 
-           size=1.5, hjust=0.5, fontface="bold")
+        axis.title.y = element_text(size = 8, margin = margin(r=10)))+
+  coord_cartesian(clip = "off")+
+  annotation_custom(grob = text_grob(label = "High S, thermal constant (N=35)",
+                                     face = "bold", size = 8),
+                    ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
 
 B <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Int saline|cold",])+
-  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[2], 
-              alpha=1, size=.5, method = "gam")+
+              alpha=1, size=.3, method = "gam")+
   scale_color_viridis_d()+
   theme_classic()+
   ylim(0, 7.5)+
@@ -1263,17 +1277,19 @@ B <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Int saline|cold",])+
         axis.text.y = element_blank(),
         axis.ticks.y = element_blank(),
         axis.title.y = element_blank(),
-        panel.border = element_rect(fill = NA, size = 2),
-        plot.margin = margin(c(1,1,-14.5,-5)),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(15,1,-27.5,-5)),
         axis.text.x = element_text(color = "white"),
         axis.ticks.x = element_line(colour = "transparent"))+
-  annotate("text", x=1050, y=7.4, label="Int. S, thermal cold (N=15)", 
-           size=1.5, hjust=0.5, fontface="bold")
+  coord_cartesian(clip = "off")+
+  annotation_custom(grob = text_grob(label = "Int. S, thermal cold (N=15)",
+                                     face = "bold", size = 8),
+                    ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
 
 C <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Low saline|cold",])+
-  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[3], 
-              alpha=1, size=.5, method = "gam")+
+              alpha=1, size=.3, method = "gam")+
   scale_color_viridis_d()+
   theme_classic()+
   ylim(0, 7.5)+
@@ -1285,83 +1301,19 @@ C <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Low saline|cold",])+
         axis.text.y = element_blank(),
         axis.ticks.y = element_blank(),
         axis.title.y = element_blank(),
-        panel.border = element_rect(fill = NA, size = 2),
-        plot.margin = margin(c(1,1,-14.5,-5)),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(15,1,-27.5,-5)),
         axis.text.x = element_text(color = "white"),
         axis.ticks.x = element_line(colour = "transparent"))+
-  annotate("text", x=1050, y=7.4, label="Low S, thermal shift (N=19)", 
-           size=1.5, hjust=0.5, fontface="bold")
-
-D <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|shift",])+
-  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.5, alpha=.8)+
-  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[4], 
-              alpha=1, size=.5, method = "gam")+
-  scale_color_viridis_d()+
-  theme_classic()+
-  ylim(0, 7.5)+
-  xlim(0,2100)+
-  labs(x="")+
-  theme(legend.position = "none",
-        panel.grid.major.y = element_line(),
-        axis.line.y = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        axis.title.y = element_blank(),
-        panel.border = element_rect(fill = NA, size = 2),
-        plot.margin = margin(c(1,1,-14.5,-5)),
-        axis.text.x = element_text(color = "white"),
-        axis.ticks.x = element_line(colour = "transparent"))+
-  annotate("text", x=1050, y=7.4, label="FW high S, thermal shift (N=9)", 
-           size=1.5, hjust=0.5, fontface="bold")
-
-E <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|cold",])+
-  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.5, alpha=.8)+
-  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[5], 
-              alpha=1, size=.5, method = "gam")+
-  scale_color_viridis_d()+
-  theme_classic()+
-  ylim(0, 7.5)+
-  xlim(0,2100)+
-  labs(x="")+
-  theme(legend.position = "none",
-        panel.grid.major.y = element_line(),
-        axis.line.y = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        axis.title.y = element_blank(),
-        panel.border = element_rect(fill = NA, size = 2),
-        plot.margin = margin(c(1,1,-14.5,-5)),
-        axis.text.x = element_text(color = "white"),
-        axis.ticks.x = element_line(colour = "transparent"))+
-  annotate("text", x=1050, y=7.4, label="FW resident, thermal cold (N=4)", 
-           size=1.5, hjust=0.5, fontface="bold")
-
-F1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|shift",])+
-  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.5, alpha=.8)+
-  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[6], 
-              alpha=1, size=.5, method = "gam")+
-  scale_color_viridis_d()+
-  theme_classic()+
-  ylim(0, 7.5)+
-  xlim(0,2100)+
-  labs(x="")+
-  theme(legend.position = "none",
-        panel.grid.major.y = element_line(),
-        axis.line.y = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        axis.title.y = element_blank(),
-        panel.border = element_rect(fill = NA, size = 2),
-        plot.margin = margin(c(1,1,-14.5,-5)),
-        axis.text.x = element_text(color = "white"),
-        axis.ticks.x = element_line(colour = "transparent"))+
-  annotate("text", x=1050, y=7.4, label="FW resident, thermal shift (N=4)", 
-           size=1.5, hjust=0.5, fontface="bold")
+  coord_cartesian(clip = "off")+
+  annotation_custom(grob = text_grob(label = "Low S, thermal shift (N=19)",
+                                     face = "bold", size = 8),
+                    ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
 
 A1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="High saline|warm",])+
-  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[1], 
-              alpha=1, size=.5, method = "gam")+
+              alpha=1, size=.3, method = "gam")+
   scale_color_viridis_d()+
   theme_classic()+
   ylim(-3, 3)+
@@ -1370,16 +1322,33 @@ A1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="High saline|warm",])+
        y=expression(bold("scaled"~delta^18*"O"~("VPDB \u2030"))))+
   theme(legend.position = "none",
         panel.grid.major.y = element_line(),
-        panel.border = element_rect(fill = NA, size = 2),
-        plot.margin = margin(c(-14.5,1,1,1)),
-        axis.text.x = element_text(color = "black", face = "bold", size = 6),
-        axis.text.y = element_text(color = "black", face = "bold", size = 6),
-        axis.title.y = element_text(size = 6))
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(1,1,-15,1)),
+        axis.text.x = element_text(color = "black", face = "bold", size = 8),
+        axis.text.y = element_text(color = "black", face = "bold", size = 8),
+        axis.title.y = element_text(size = 8, margin = margin(r=10)))+
+  coord_cartesian(clip = "off")+
+  geom_segment(x=-330, y=0, xend=-330, yend=3, 
+               lineend = "butt", linejoin = "mitre",
+               size=2, arrow = arrow(length = unit(0.18, "inches")),
+               color="#66CCCC")+
+  annotation_custom(grob = text_grob(label = "cold", 
+                                     rot = 90, face = "bold", size = 8),
+                                     ymin=0, ymax=2,
+                                     xmin=-335, xmax=-335)+
+  geom_segment(x=-330, y=0, xend=-330, yend=-3, 
+               lineend = "butt", linejoin = "mitre",
+               size=2, arrow = arrow(length = unit(0.18, "inches")),
+               color="#FF6666")+
+  annotation_custom(grob = text_grob(label = "warm", 
+                                     rot = -90, face = "bold", size = 8),
+                                     ymin=0, ymax=-2,
+                                     xmin=-325, xmax=-325)
 
 B1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Int saline|cold",])+
-  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[2], 
-              alpha=1, size=.5, method = "gam")+
+              alpha=1, size=.3, method = "gam")+
   scale_color_viridis_d()+
   theme_classic()+
   ylim(-3,3)+
@@ -1391,14 +1360,15 @@ B1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Int saline|cold",])+
         axis.text.y = element_blank(),
         axis.ticks.y = element_blank(),
         axis.title.y = element_blank(),
-        panel.border = element_rect(fill = NA, size = 2),
-        plot.margin = margin(c(-14.5,1,1,-5)),
-        axis.text.x = element_text(color = "black", face = "bold", size = 6))
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(1,1,-15,1)),
+        axis.text.x = element_text(color = "black", face = "bold", size = 8))+
+  coord_cartesian(clip = "off")
 
 C1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Low saline|cold",])+
-  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.5, alpha=.8)+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[3], 
-              alpha=1, size=.5, method = "gam")+
+              alpha=1, size=.3, method = "gam")+
   scale_color_viridis_d()+
   theme_classic()+
   ylim(-3,3)+
@@ -1410,81 +1380,199 @@ C1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Low saline|cold",])+
         axis.text.y = element_blank(),
         axis.ticks.y = element_blank(),
         axis.title.y = element_blank(),
-        panel.border = element_rect(fill = NA, size = 2),
-        plot.margin = margin(c(-14.5,1,1,-5)),
-        axis.text.x = element_text(color = "black", face = "bold", size = 6))
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(1,1,-15,1)),
+        axis.text.x = element_text(color = "black", face = "bold", size = 8))+
+  coord_cartesian(clip = "off")
 
-D1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|shift",])+
-  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.5, alpha=.8)+
-  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[4], 
-              alpha=1, size=.5, method = "gam")+
-  scale_color_viridis_d()+
-  theme_classic()+
-  ylim(-3,3)+
-  xlim(0,2100)+
-  labs(x="")+
-  theme(legend.position = "none",
-        panel.grid.major.y = element_line(),
-        axis.line.y = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        axis.title.y = element_blank(),
-        panel.border = element_rect(fill = NA, size = 2),
-        plot.margin = margin(c(-14.5,1,1,-5)),
-        axis.text.x = element_text(color = "black", face = "bold", size = 6))
-
-E1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|cold",])+
-  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.5, alpha=.8)+
-  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[5], 
-              alpha=1, size=.5, method = "gam")+
-  scale_color_viridis_d()+
-  theme_classic()+
-  ylim(-3,3)+
-  xlim(0,2100)+
-  labs(x="")+
-  theme(legend.position = "none",
-        panel.grid.major.y = element_line(),
-        axis.line.y = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        axis.title.y = element_blank(),
-        panel.border = element_rect(fill = NA, size = 2),
-        plot.margin = margin(c(-14.5,1,1,-5)),
-        axis.text.x = element_text(color = "black", face = "bold",size = 6))
-
-F2 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|shift",])+
-  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.5, alpha=.8)+
-  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[6], 
-              alpha=1, size=.5, method = "gam")+
-  scale_color_viridis_d()+
-  theme_classic()+
-  ylim(-3,3)+
-  xlim(0,2100)+
-  labs(x="")+
-  theme(legend.position = "none",
-        panel.grid.major.y = element_line(),
-        axis.line.y = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        axis.title.y = element_blank(),
-        panel.border = element_rect(fill = NA, size = 2),
-        plot.margin = margin(c(-14.5,1,1,-5)),
-        axis.text.x = element_text(color = "black", face = "bold",size = 6))
-
-Plot <- ggarrange(A,B,C,D,E,F1,A1,B1,C1,D1,E1,F2, 
-          nrow = 2, ncol = 6, 
-          widths = c(1,1,1,1,1,1),
+Plot <- ggarrange(A,B,C,A1,B1,C1, 
+          nrow = 2, ncol = 3, 
+          widths = c(1,1,1),
           heights = c(1.5,1.5),
           align = "v",
-          labels = c("a","b","c","d","e","f"),
+          labels = c("a","b","c"),
           label.x = .1,
-          label.y = 1.05)
+          label.y = 1.03)
 
-jpeg(filename = "Figures/Life-history-plots.jpg", 
+png(filename = "Figures/Life-history-plots-lagoon.png", 
     width = 5000, height = 2000, res = 600)
 annotate_figure(Plot,
                 bottom = text_grob(expression(bold("Distance from core"~(mu*"m"))),
-                                   size = 8, vjust = -1, hjust = 0.35),
+                                   size = 8, vjust = 0.7, hjust = 0.35),
+                top = text_grob(expression(bold("Lagoon pike life histories")),
+                                size = 15, hjust = 1.6),
+                fig.lab.size = 5,
+                fig.lab.face = "bold")
+dev.off()
+```
+
+```{r dtw graphics FW, include=FALSE, eval=FALSE}
+D <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|shift",])+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[4], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(0, 7.5)+
+  xlim(0,2100)+
+  labs(x="", y=expression(bold("Sr/Ca (mg/g)")))+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_text(color = "black", face = "bold", size = 8),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_text(size = 8, margin = margin(r=10)),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(15,1,-27.5,-5)),
+        axis.text.x = element_text(color = "white"),
+        axis.ticks.x = element_line(colour = "transparent"))+
+  coord_cartesian(clip = "off")+
+  annotation_custom(grob = text_grob(label = "FW high S, thermal shift (N=9)",
+                                     face = "bold", size = 8),
+                    ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
+
+E <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|cold",])+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[5], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(0, 7.5)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(15,1,-27.5,-5)),
+        axis.text.x = element_text(color = "white"),
+        axis.ticks.x = element_line(colour = "transparent"))+
+  coord_cartesian(clip = "off")+
+  annotation_custom(grob = text_grob(label = "FW resident, thermal cold (N=4)",
+                                     face = "bold", size = 8),
+                    ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
+
+
+F1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|shift",])+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[6], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(0, 7.5)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(15,1,-27.5,-5)),
+        axis.text.x = element_text(color = "white"),
+        axis.ticks.x = element_line(colour = "transparent"))+
+  coord_cartesian(clip = "off")+
+  annotation_custom(grob = text_grob(label = "FW resident, thermal shift (N=4)",
+                                     face = "bold", size = 8),
+                    ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
+
+D1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|shift",])+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[4], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(-3,3)+
+  xlim(0,2100)+
+  labs(x="", 
+       y=expression(bold("scaled"~delta^18*"O"~("VPDB \u2030"))))+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_text(color = "black", face = "bold", size = 8),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_text(size = 8, margin = margin(r=10)),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(1,1,-15,1)),
+        axis.text.x = element_text(color = "black", face = "bold", size = 8))+
+  coord_cartesian(clip = "off")+
+  geom_segment(x=-330, y=0, xend=-330, yend=3, 
+               lineend = "butt", linejoin = "mitre",
+               size=2, arrow = arrow(length = unit(0.18, "inches")),
+               color="#66CCCC")+
+  annotation_custom(grob = text_grob(label = "cold", 
+                                     rot = 90, face = "bold", size = 8),
+                                     ymin=0, ymax=2,
+                                     xmin=-335, xmax=-335)+
+  geom_segment(x=-330, y=0, xend=-330, yend=-3, 
+               lineend = "butt", linejoin = "mitre",
+               size=2, arrow = arrow(length = unit(0.18, "inches")),
+               color="#FF6666")+
+  annotation_custom(grob = text_grob(label = "warm", 
+                                     rot = -90, face = "bold", size = 8),
+                                     ymin=0, ymax=-2,
+                                     xmin=-325, xmax=-325)
+
+E1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|cold",])+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[5], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(-3,3)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(1,1,-15,1)),
+        axis.text.x = element_text(color = "black", face = "bold",size = 8))+
+  coord_cartesian(clip = "off")
+
+F2 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|shift",])+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[6], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(-3,3)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(1,1,-15,1)),
+        axis.text.x = element_text(color = "black", face = "bold",size = 8))+
+  coord_cartesian(clip = "off")
+
+Plot <- ggarrange(D,E,F1,D1,E1,F2, 
+          nrow = 2, ncol = 3, 
+          widths = c(1,1,1),
+          heights = c(1.5,1.5),
+          align = "v",
+          labels = c("d","e","f"),
+          label.x = .1,
+          label.y = 1.03)
+
+png(filename = "Figures/Life-history-plots_FW.png", 
+    width = 5000, height = 2000, res = 600)
+annotate_figure(Plot,
+                bottom = text_grob(expression(bold("Distance from core"~(mu*"m"))),
+                                   size = 8, vjust = 0.7, hjust = 0.35),
+                top = text_grob(expression(bold("Tributary pike life histories")),
+                                size = 15, hjust = 1.5),
                 fig.lab.size = 5,
                 fig.lab.face = "bold")
 dev.off()
