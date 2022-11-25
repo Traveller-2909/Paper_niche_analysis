@@ -324,12 +324,13 @@ mypallette <- viridis::viridis(4, direction = 1)
 
 d18O <- ggplot(otoint_lifehist, aes(year, d18O_res))+
   geom_boxplot(aes(color = area), width = 0.5, outlier.size = .5)+
-  scale_x_discrete(limits = factor(1:10))+
+  scale_x_discrete(limits = factor(1:10), breaks=c(1:10),
+                   labels=c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"))+
   labs(x="Age (years)",
        y=expression(bold("Sr-corrected"~delta^18*"O"~("VPDB \u2030"))),
        color="area of capture")+
   theme_classic()+
-  scale_color_viridis_d(direction = -1, begin = 0, end = 0.7)+
+  scale_color_viridis_d(direction = 1, begin = 0, end = 0.7)+
   theme(panel.grid.major = element_line(),
         legend.position = "none",
         legend.background = element_blank(),
@@ -338,20 +339,38 @@ d18O <- ggplot(otoint_lifehist, aes(year, d18O_res))+
         axis.ticks = element_line(size = .5, colour = "black"),
         axis.text = element_text(size = 10, colour = "black"),
         axis.title.x = element_text(size = 10, face = "bold"),
-        axis.title.y = element_text(size = 10, face = "bold"),
+        axis.title.y = element_text(size = 10, face = "bold",
+                                    margin = margin(r=15)),
         legend.text = element_text(size = 10),
         legend.title = element_text(size = 10, face = "bold"),
-        legend.key.size = unit(.8,"line"))
+        legend.key.size = unit(.8,"line"))+
+  coord_cartesian(clip = "off")+
+  geom_segment(x=-0.56, y=0, xend=-0.56, yend=2.5, 
+               lineend = "butt", linejoin = "mitre",
+               size=3, arrow = arrow(length = unit(0.2, "inches")),
+               color="#66CCCC")+
+  annotation_custom(grob = text_grob(label = "lower temperature", 
+                                     rot = 90, face = "bold", size = 7),
+                                     ymin=0, ymax=2.5,
+                                     xmin=-0.57, xmax=-0.57)+
+  geom_segment(x=-0.56, y=0, xend=-0.56, yend=-2.5, 
+               lineend = "butt", linejoin = "mitre",
+               size=3, arrow = arrow(length = unit(0.2, "inches")),
+               color="#FF6666")+
+  annotation_custom(grob = text_grob(label = "higher temperature", 
+                                     rot = -90, face = "bold", size = 7),
+                                     ymin=0, ymax=-2.5,
+                                     xmin=-0.54, xmax=-0.54)
 
 #Lifelong increase in Sr/Ca --> saltier the older
 SrCa <- ggplot(otoint_lifehist, aes(year, Sr*1000))+
   geom_boxplot(aes(color = area), width = 0.5, outlier.size = .5)+
-  scale_x_discrete(limits = factor(1:11))+
+  scale_x_discrete(limits = factor(1:10))+
   labs(x="Age (years)",
        y="Sr/Ca (mg/g)",
        color="area of capture")+
   theme_classic()+
-  scale_color_viridis_d(direction = -1, begin = 0, end = 0.7)+
+  scale_color_viridis_d(direction = 1, begin = 0, end = 0.7)+
   theme(panel.grid.major = element_line(),
         legend.position = "none",
         legend.background = element_blank(),
@@ -365,7 +384,7 @@ SrCa <- ggplot(otoint_lifehist, aes(year, Sr*1000))+
         legend.title = element_text(size = 10, face = "bold"),
         legend.key.size = unit(.8,"line"))
 
-png(filename = "Figures/Lifelong_niche.png", 
+png(filename = "Figures/Lifelong_niche_revised.png", 
     width = 4500, height = 1800, res = 600)
 ggarrange(d18O, SrCa, ncol = 2, nrow = 1, labels = c("A", "B"), common.legend = TRUE,
                 legend = "bottom")
