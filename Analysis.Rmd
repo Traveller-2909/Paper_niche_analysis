@@ -2160,6 +2160,10 @@ pikes2 <- pikes%>%
             Sal=as.numeric(scale(SAL)),
             WT=as.numeric(scale(WT)),
             P=as.numeric(scale(P)))
+
+write.table(pikes2, "Data/Pike/Pikedata_model.txt", sep="\t", dec=".",
+            row.names = F)
+
 #Check
 str(pikes2)
 ```
@@ -2312,29 +2316,18 @@ r.squaredGLMM(pikemodel.final)
 ```
 
 ## Figure main effects
-```{r temp & clust effect figure, eval=FALSE}
+```{r temperture effect figure, eval=FALSE}
+pikes2 <- read.delim("Data/Pike/Pikedata_model.txt", header = T, 
+                     stringsAsFactors = F, sep = "\t", dec = ".")
+
 #factorize temperature
 pikes2$agefact <- ifelse(pikes2$lifeyear<3, 2, 
                          ifelse(pikes2$lifeyear>2&pikes2$lifeyear<7, 1,
                                 ifelse(pikes2$lifeyear>6, 3, NA)))
 
 pikes2$agefact2 <- factor(pikes2$agefact,levels = c(2,1,3),
-                                            labels = c("juvenile", "adult", "trophy"))
-
-#rename clusters
-pikes3 <- pikes2%>%
-  mutate(clust2=case_when(clust=="F_HighS"~2,
-                          clust=="F_IntS"~2,
-                          clust=="F_LowS"~1,
-                          clust=="S_HighS"~4,
-                          clust=="S_IntS"~3,
-                          clust=="S_LowS"~2))
-pikes3$clust <- factor(pikes3$clust2,
-                       levels = c(1,2,3,4),
-                       labels = c("Freshwater resident",
-                                  "Low salinity/thermal shift",
-                                  "Saline shift/thermal shift", 
-                                  "High salinity/stable temperature"))
+                                            labels = c("juvenile", "adult", 
+                                                       "TL > 1 m"))
 
 mypallette <- viridis::viridis(4, direction = -1)
 
@@ -2348,28 +2341,71 @@ Temp <- ggplot(pikes2, aes(res_mean, log(inc), color=agefact2))+
   scale_color_viridis_d()+
   theme_classic()+
   theme(panel.grid.major = element_line(),
-        legend.position = c(.803,.825),
+        legend.position = c(.9,.9),
         legend.background = element_blank(),
         legend.box.background = element_rect(),
         axis.line = element_line(size = .5, colour = "black", linetype = 1),
         axis.ticks = element_line(size = .5, colour = "black"),
         axis.text = element_text(size = 10, colour = "black"),
-        axis.title.x = element_text(size = 10, face = "bold"),
+        axis.title.x = element_text(size = 10, face = "bold", 
+                                    margin = margin(t=10)),
         axis.title.y = element_text(size = 10, face = "bold"),
         legend.text = element_text(size = 5),
         legend.title = element_text(size = 10, face = "bold"),
-        legend.key.size = unit(.8,"line"))
+        legend.key.size = unit(.8,"line"))+
+  coord_cartesian(clip = "off")+
+  geom_segment(x=0, y=3.6, xend=2.5, yend=3.6, 
+               lineend = "butt", linejoin = "mitre",
+               size=2, arrow = arrow(length = unit(0.18, "inches")),
+               color="#66CCCC")+
+  annotation_custom(grob = text_grob(label = "cold", 
+                                     rot = 0, face = "bold", size = 10),
+                                     ymin=3.62, ymax=3.62,
+                                     xmin=0, xmax=2.5)+
+  geom_segment(x=0, y=3.6, xend=-2.5, yend=3.6, 
+               lineend = "butt", linejoin = "mitre",
+               size=2, arrow = arrow(length = unit(0.18, "inches")),
+               color="#FF6666")+
+  annotation_custom(grob = text_grob(label = "warm", 
+                                     rot = -0, face = "bold", size = 10),
+                                     ymin=3.62, ymax=3.62,
+                                     xmin=0, xmax=-2.5)
 
-#Cluster effect
-Clust <- ggplot(pikes3[pikes$lifeyear<=7,], aes(factor(lifeyear), log(inc), color=clust))+
+png(filename = "Figures/Temperature_effects_growth.png", 
+    width = 3000, height = 1500, res = 600)
+annotate_figure(Temp, top = text_grob("Effect of relative lifelong temperature on pike growth", color = "black", face = "bold", size = 10, vjust = 1, hjust = 0.7))
+dev.off()
+```
+
+
+```{r cluster effect figure, eval=FALSE}
+pikes2 <- read.delim("Data/Pike/Pikedata_model.txt", header = T, 
+                     stringsAsFactors = F, sep = "\t", dec = ".")
+
+#rename clusters
+pikesF <- pikes2%>%
+  filter(clust=="F_HighS"|clust=="F_IntS"|clust=="F_LowS")
+
+pikesB <- pikes2%>%
+  filter(clust=="S_LowS"|clust=="S_IntS"|clust=="S_HighS")
+
+pikesF$clust <- factor(pikesF$clust,
+                       levels = c("F_HighS","F_IntS","F_LowS"),
+                       labels = c("FW high S, thermal shift",
+                                  "FW resident, thermal shift",
+                                  "FW resident, thermal cold"))
+
+pikesB$clust <- factor(pikesB$clust,
+                       levels = c("S_LowS","S_IntS","S_HighS"),
+                       labels = c("High S, thermal constant",
+                                  "Int. S, thermal cold",
+                                  "Low S, thermal shift"))
+
+clustB <- ggplot(pikesB[pikesB$lifeyear<=7,], aes(factor(lifeyear), log(inc), color=clust))+
   geom_boxplot(lwd=.3, outlier.shape = NA)+
   labs(x="Age (years)", y=expression(bold("increment"~(mu*"m"))), color="ecotype")+
   scale_x_discrete(breaks=c("1","2","3","4","5","6","7"))+
-  scale_color_manual(breaks = c("Freshwater resident",
-                                "Low salinity/thermal shift",
-                                  "Saline shift/thermal shift", 
-                                  "High salinity/stable temperature"),
-                     values = mypallette)+
+  scale_color_viridis_d(direction = 1, begin = 0, end = 0.5)+
   theme_classic()+
   theme(panel.grid.major = element_line(),
         legend.position = c(.715,.79),
@@ -2385,12 +2421,33 @@ Clust <- ggplot(pikes3[pikes$lifeyear<=7,], aes(factor(lifeyear), log(inc), colo
         legend.title = element_text(size = 10, face = "bold"),
         legend.key.size = unit(.8,"line"))
 
-Fig <- ggarrange(Temp, Clust, align = "h", labels = c("A", "B"), label.x = .02)+
+clustF <- ggplot(pikesF[pikesF$lifeyear<=7,], aes(factor(lifeyear), log(inc), color=clust))+
+  geom_boxplot(lwd=.3, outlier.shape = NA)+
+  labs(x="Age (years)", y=expression(bold("increment"~(mu*"m"))), color="ecotype")+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"))+
+  scale_color_viridis_d(direction = 1, begin = 0.5, end = 1)+
+  theme_classic()+
+  theme(panel.grid.major = element_line(),
+        legend.position = c(.715,.79),
+        legend.background = element_blank(),
+        legend.box.background = element_rect(),
+        axis.line = element_line(size = .5, colour = "black", linetype = 1),
+        axis.ticks = element_line(size = .5, colour = "black"),
+        axis.text = element_text(size = 10, colour = "black"),
+        axis.text.y = element_blank(),
+        axis.title.x = element_text(size = 10, face = "bold"),
+        axis.title.y = element_blank(),
+        legend.text = element_text(size = 5),
+        legend.title = element_text(size = 10, face = "bold"),
+        legend.key.size = unit(.8,"line"))
+
+Fig <- ggarrange(clustB, clustF, align = "h", labels = c("A", "B"), 
+                 label.x = .02, label.y = 1.05)+
   theme(plot.margin = margin(.5,0,0,0,"cm"))
 
-png(filename = "Figures/Interaction_effects_growth.png", 
+png(filename = "Figures/Cluster_effects_growth.png", 
     width = 4500, height = 2000, res = 600)
-annotate_figure(Fig, top = text_grob("Effects of relative lifelong temperature and ecotype on pike growth", color = "black", face = "bold", size = 15, vjust = 1))
+annotate_figure(Fig, top = text_grob("Effects of ecotype on pike growth", color = "black", face = "bold", size = 15, vjust = 1, hjust = 1.1))
 dev.off()
 ```
 
