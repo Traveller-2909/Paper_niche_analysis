@@ -2403,7 +2403,8 @@ pikesB$clust <- factor(pikesB$clust,
 
 clustB <- ggplot(pikesB[pikesB$lifeyear<=7,], aes(factor(lifeyear), log(inc), color=clust))+
   geom_boxplot(lwd=.3, outlier.shape = NA)+
-  labs(x="Age (years)", y=expression(bold("increment"~(mu*"m"))), color="ecotype")+
+  labs(x="Age (years)", y=expression(bold("log increment"~(mu*"m"))),
+       color="ecotype")+
   scale_x_discrete(breaks=c("1","2","3","4","5","6","7"))+
   scale_color_viridis_d(direction = 1, begin = 0, end = 0.5)+
   theme_classic()+
@@ -2416,7 +2417,7 @@ clustB <- ggplot(pikesB[pikesB$lifeyear<=7,], aes(factor(lifeyear), log(inc), co
         axis.text = element_text(size = 10, colour = "black"),
         axis.text.y = element_blank(),
         axis.title.x = element_text(size = 10, face = "bold"),
-        axis.title.y = element_blank(),
+        axis.title.y = element_text(size = 10, face = "bold"),
         legend.text = element_text(size = 5),
         legend.title = element_text(size = 10, face = "bold"),
         legend.key.size = unit(.8,"line"))
