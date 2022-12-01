@@ -2560,10 +2560,19 @@ standata_growth_2 = list(
 # Script to fit individual-level growth curve
 # all groups (not working)
 stancode <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes.stan")
-# different grouping, similar to Höhne et al.
-stancode2 <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes_3.stan")
+# different grouping, similar to Höhne et al., no transformation
+stancode2 <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes_2.stan")
+# different grouping with transformation
+stancode3 <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes_3.stan")
+#normal priors
+stancode4 <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes_3_normal.stan")
 
-fit = stan(stancode2, iter = 250, data = standata_growth_2, 
+fit = stan(stancode4, iter = 1000, data = standata_growth_2, 
+           model_name = "Individual pike growth",
+           control = list(adapt_delta = 0.9, 
+                          max_treedepth = 12))
+
+fit_large = stan(stancode4, iter = 40000, data = standata_growth_2, 
            model_name = "Individual pike growth",
            control = list(adapt_delta = 0.9, 
                           max_treedepth = 12))
@@ -2583,6 +2592,7 @@ print(fit,pars = c("tZero1","tZero2","tZero3",
 
 save(fit, file = "Data/Pike/Fit_individual_ecotypes_GM.RData")
 ```
+
 ```{r playaround priors, include=FALSE, eval=FALSE}
 alpha = 0.3^2/0.005
 beta =  0.3/0.005
