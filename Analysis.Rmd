@@ -1088,9 +1088,9 @@ fishassign_F2 <- data.frame(ID=names(Fseries),
                                                       "FW low saline|cold",
                                                       "FW high saline|shift")))
 #Join dtw clusters with pike data
-Bgroup1$area <- ifelse(Bgroup1$area=="Marine", "GB", Bgroup1$area)
+Bgroup$area <- ifelse(Bgroup$area=="Marine", "GB", Bgroup$area)
 
-fishassign_B <- Bgroup1%>%
+fishassign_B <- Bgroup%>%
   group_by(ID)%>%
   transmute(ID=ID,
             capt=capt,
@@ -1106,7 +1106,7 @@ fishassign_B <- Bgroup1%>%
                             "Int saline|cold",
                             "High saline|warm"))
 
-fishassign_F <- Fgroup1%>%
+fishassign_F <- Fgroup%>%
   group_by(ID)%>%
   transmute(ID=ID,
             capt=capt,
@@ -2377,7 +2377,6 @@ annotate_figure(Temp, top = text_grob("Effect of relative lifelong temperature o
 dev.off()
 ```
 
-
 ```{r cluster effect figure, eval=FALSE}
 pikes2 <- read.delim("Data/Pike/Pikedata_model.txt", header = T, 
                      stringsAsFactors = F, sep = "\t", dec = ".")
@@ -2462,65 +2461,161 @@ pikedata <- read.delim("Data/Pike/Pike_TL_backcalulated.txt", header = T, string
 priors <- read.delim("Data/Pike/Priors_pike.csv", sep = ";", 
                      header = T, stringsAsFactors = F)
 
-pikedata <- pikedata %>% filter(area != "KD") %>% filter(id != "BH-01908")
+load("Data/Pike/Adults_element_transects_all.RData")
+
+Bgroup.clus <- Bgroup%>%inner_join(fishassign_B2, by="ID")
+Fgroup.clus <- Fgroup%>%inner_join(fishassign_F2, by="ID")
+
+Groupall <- rbind(Bgroup.clus, Fgroup.clus)
+
+Groups <- Groupall%>%
+  ungroup()%>%
+  transmute(id = ID,
+            ecotype=case_when(clust2=="High saline|warm"~1,
+                              clust2=="Int saline|cold"~2,
+                              clust2=="Low saline|cold"~3,
+                              clust2=="FW high saline|shift"~4,
+                              clust2=="FW low saline|shift"~5,
+                              clust2=="FW low saline|cold"~6
+                              ))%>%
+  distinct() %>% 
+  group_by(ecotype) %>% #Group by ecotype to number each group
+  transmute(id = id,
+            id2 = row_number(),
+            ecotype = ecotype)%>%
+  ungroup()%>%
+  mutate(id3 = row_number())
+
+
+#Filter out lake fish and vaterite fish
+pikedata2 <- pikedata %>% filter(area != "KD") %>% filter(id != "BH-01908")%>%
+  inner_join(Groups, by="id")
 
 # Cleanup
-growthdata <- pikedata %>%
-  transmute(id = as.integer(substr(pikedata$id,4,9)),
+growthdata <- pikedata2 %>%
+  transmute(id = id,
+            id2 = id2,
+            id3 = id3,
             sex = sex,
             weight = weight,
             TL = TL,
-            radmm = back_length/10,
+            radmm = rad/1000,
             date = date,
             area = area,
             age = age,
-            agei = agei)
+            agei = agei,
+            ecotype=ecotype)
+
+
 
 #Binary variable for sex
-growthdata$sex <- ifelse(growthdata$sex == "f", 0, 1)
+#growthdata$sex <- ifelse(growthdata$sex == "f", 0, 1)
 
-#ID2 variable
-IDfemale <- growthdata %>% filter(sex==0)%>%
-  transmute(id=id)%>%
-  arrange(id)%>%
-  distinct()%>%
-  mutate(ID2=seq(1,nrow(IDfemale),1))
-
-IDmale <- growthdata %>% filter(sex==1)%>%
-  transmute(id=id)%>%
-  arrange(id)%>%
-  distinct()%>%
-  mutate(ID2=seq(1,nrow(IDmale),1))
-
-IDall <- rbind(IDfemale, IDmale)
-
-growthdata <- growthdata %>% left_join(IDall, by="id")
+# #ID2 variable
+# IDfemale <- growthdata %>% filter(sex==0)%>%
+#   transmute(id=id)%>%
+#   arrange(id)%>%
+#   distinct()
+# IDfemale$ID2 <- seq(1,nrow(IDfemale),1)
+# 
+# IDmale <- growthdata %>% filter(sex==1)%>%
+#   transmute(id=id)%>%
+#   arrange(id)%>%
+#   distinct()
+# IDmale$ID2 <- seq(1,nrow(IDmale),1)
+# 
+# IDall <- rbind(IDfemale, IDmale)
+# 
+# growthdata <- growthdata %>% left_join(IDall, by="id")
 
 standata_growth = list(
   Radmm = growthdata$rad,
   Agei = growthdata$agei,
-  Sexbin = growthdata$sex,
+  tZero_mu = mean(priors$to),
+  tZero_sig = sd(priors$to),
+  ecotype = as.integer(growthdata$ecotype),
   N = nrow(growthdata),
-  mu_linf = 150,
-  sig_linf = 10,
-  n_groupmax = as.integer(max(growthdata[growthdata$sex==0,]$ID2)),
-  n_group1 = as.integer(max(growthdata[growthdata$sex==0,]$ID2)),
-  n_group2 = as.integer(max(growthdata[growthdata$sex==1,]$ID2)),
-  group_id = growthdata$ID2
+  n_groupmax = as.integer(max(growthdata$id2)),
+  n_group1 = as.integer(max(growthdata[growthdata$ecotype==1,]$id2)),
+  n_group2 = as.integer(max(growthdata[growthdata$ecotype==2,]$id2)),
+  n_group3 = as.integer(max(growthdata[growthdata$ecotype==3,]$id2)),
+  n_group4 = as.integer(max(growthdata[growthdata$ecotype==4,]$id2)),
+  n_group5 = as.integer(max(growthdata[growthdata$ecotype==5,]$id2)),
+  n_group6 = as.integer(max(growthdata[growthdata$ecotype==6,]$id2)),
+  group_id = growthdata$id2
+)
+
+standata_growth_2 = list(
+  Radmm = growthdata$radmm,
+  Agei = growthdata$agei,
+  N = nrow(growthdata),
+  n_fish = as.integer(max(growthdata$id3)),
+  n_eco = as.integer(max(growthdata$ecotype)),
+  fish_id = as.integer(growthdata$id3),
+  eco_id = as.integer(growthdata$ecotype)
 )
 ```
 
 ```{r individual Growth analysis, include=FALSE}
 # Script to fit individual-level growth curve
-stancode <- ("Data/Stancode/Growth_model_hierarchical3.stan")
+# all groups (not working)
+stancode <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes.stan")
+# different grouping, similar to Höhne et al.
+stancode2 <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes_3.stan")
 
-fit = stan(stancode, iter = 40000, data = standata_growth,
-           control = list(adapt_delta = 0.9, max_treedepth = 10))
+fit = stan(stancode2, iter = 250, data = standata_growth_2, 
+           model_name = "Individual pike growth",
+           control = list(adapt_delta = 0.9, 
+                          max_treedepth = 12))
 
-save(fit, file = "Data/Pike/Fit_individual_GM.RData")
+print(fit,pars = c("LInf_eco","k_eco","tZero_eco","phi"))
 
-print(fit, pars = c("LInf1", "LInf2", "tZero1", "tZero2", "k1_mu", "k2_mu", "k1_sig", "k2_sig", "phi" ))
+#Pairs plots
+pairs(fit, pars = c("LInf","k"))
 
+
+print(fit,pars = c("k1_mu","k2_mu","k3_mu",
+               "k4_mu","k5_mu","k6_mu",
+               "k1_sig","k2_sig","k3_sig",
+               "k4_sig","k5_sig","k6_sig"))
+print(fit,pars = c("tZero1","tZero2","tZero3",
+               "tZero4","tZero5","tZero6"))
+
+save(fit, file = "Data/Pike/Fit_individual_ecotypes_GM.RData")
+```
+```{r playaround priors, include=FALSE, eval=FALSE}
+alpha = 0.3^2/0.005
+beta =  0.3/0.005
+## verify that the mean and variance are 40 and 25, as expected
+alpha / beta
+## 40
+alpha / beta^2
+## 25
+
+sim = rgamma(5000, alpha, beta)
+quantile(sim, c(0.025, 0.975))
+
+mean = mean(Pikeprior$Loo)
+var = sd(Pikeprior$Loo)
+
+sim2 = rnorm(5000, mean, var)
+quantile(sim2, c(0.025, 0.975))
+
+#calculate own prior, upper max = 139, cv = cv of growth being between 0.1 and 0.15
+
+fit<-function(mn){
+  cv<-5
+  quant<-pnorm(139,mn,cv*mn)
+  diff<-(0.975-quant)^2
+  return(diff)
+}
+
+res<-optim(100,fit,method="Brent",lower = 1, upper = 200)
+
+```
+
+
+```{r individual Growth analysis extract data, include=FALSE}
 samples <- as.matrix(fit, pars=c("LInf", "LInf1", "k", "k1", "tZero", "tZero1"))
 head(samples)
 
