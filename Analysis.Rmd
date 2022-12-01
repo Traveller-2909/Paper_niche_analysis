@@ -2572,23 +2572,16 @@ fit = stan(stancode4, iter = 1000, data = standata_growth_2,
            control = list(adapt_delta = 0.9, 
                           max_treedepth = 12))
 
-fit_large = stan(stancode4, iter = 40000, data = standata_growth_2, 
+fit_large = stan(stancode4, iter = 5000, data = standata_growth_2, 
            model_name = "Individual pike growth",
            control = list(adapt_delta = 0.9, 
                           max_treedepth = 12))
 
-print(fit,pars = c("LInf_eco","k_eco","tZero_eco","phi"))
+ print(fit,pars = c("LInf_eco","k_eco","tZero_eco","phi"))
 
 #Pairs plots
-pairs(fit, pars = c("LInf","k"))
-
-
-print(fit,pars = c("k1_mu","k2_mu","k3_mu",
-               "k4_mu","k5_mu","k6_mu",
-               "k1_sig","k2_sig","k3_sig",
-               "k4_sig","k5_sig","k6_sig"))
-print(fit,pars = c("tZero1","tZero2","tZero3",
-               "tZero4","tZero5","tZero6"))
+pairs(fit, pars = c("LInf","k","tZero"))
+pairs(fit, pars = c("LInf_eco","k_eco"))
 
 save(fit, file = "Data/Pike/Fit_individual_ecotypes_GM.RData")
 ```
@@ -2626,7 +2619,7 @@ res<-optim(100,fit,method="Brent",lower = 1, upper = 200)
 
 
 ```{r individual Growth analysis extract data, include=FALSE}
-samples <- as.matrix(fit, pars=c("LInf", "LInf1", "k", "k1", "tZero", "tZero1"))
+samples <- as.matrix(fit, pars=c("LInf_eco", "k_eco", "tZero_eco"))
 head(samples)
 
 sample_LInf <- as.array(fit, pars = c("LInf", "LInf1"))
@@ -2638,7 +2631,7 @@ mcmc_intervals(sample_tZero)
 sample_phi <- as.array(fit, pars = "phi")
 mcmc_intervals(sample_phi)
 
-summary(fit, pars = "LInf1")
+summary(fit, pars = "LInf_eco")
 ```
 
 ```{r individual Growth analysis evaluation}
@@ -2679,37 +2672,76 @@ pairs(fit, pars = c("LInf2", "k2_mu", "k2_sig", "tZero2"))
 
 ```{r individual Growth analysis plotting}
 #prediction function
+head(samples)
+
 Incpredict<- function(pars, Agei){
   pars[1]*(1-exp(-pars[2]*(Agei-pars[3])))
 }
 
-Pred1 <- t(apply(samples[, c(1, 3, 7)], 1, Incpredict, Agei = 1:20))
-Pred2 <- t(apply(samples[, c(2, 5, 8)], 1, Incpredict, Agei = 1:20))
+Pred1 <- t(apply(samples[, c(1, 7, 13)], 1, Incpredict, Agei = 1:20))
+Pred2 <- t(apply(samples[, c(2, 8, 14)], 1, Incpredict, Agei = 1:20))
+Pred3 <- t(apply(samples[, c(3, 9, 15)], 1, Incpredict, Agei = 1:20))
+Pred4 <- t(apply(samples[, c(4, 10, 16)], 1, Incpredict, Agei = 1:20))
+Pred5 <- t(apply(samples[, c(5, 11, 17)], 1, Incpredict, Agei = 1:20))
+Pred6 <- t(apply(samples[, c(6, 12, 18)], 1, Incpredict, Agei = 1:20))
 
-Predtotal <- rbind(Pred1, Pred2)
+Predtotal <- rbind(Pred1, Pred2, Pred3, Pred4, Pred5, Pred6)
 
 #Make quantiles
 Quantile1 <- data.frame(t(apply(Pred1, 2, quantile, c(0.5, 0.05, 0.95))))
 colnames(Quantile1) <- c("median", "lower", "upper")
 Quantile1$Agei <- c(1:20)
+
 Quantile2 <- data.frame(t(apply(Pred2, 2, quantile, c(0.5, 0.05, 0.95))))
 colnames(Quantile2) <- c("median", "lower", "upper")
 Quantile2$Agei <- c(1:20)
 
-Quantileplot <- ggplot() +
+Quantile3 <- data.frame(t(apply(Pred3, 2, quantile, c(0.5, 0.05, 0.95))))
+colnames(Quantile3) <- c("median", "lower", "upper")
+Quantile3$Agei <- c(1:20)
+
+Quantile4 <- data.frame(t(apply(Pred4, 2, quantile, c(0.5, 0.05, 0.95))))
+colnames(Quantile4) <- c("median", "lower", "upper")
+Quantile4$Agei <- c(1:20)
+
+Quantile5 <- data.frame(t(apply(Pred5, 2, quantile, c(0.5, 0.05, 0.95))))
+colnames(Quantile5) <- c("median", "lower", "upper")
+Quantile5$Agei <- c(1:20)
+
+Quantile6 <- data.frame(t(apply(Pred6, 2, quantile, c(0.5, 0.05, 0.95))))
+colnames(Quantile6) <- c("median", "lower", "upper")
+Quantile6$Agei <- c(1:20)
+
+mypallette <- viridis::viridis(6, direction = 1)
+
+Ecocurves <- ggplot() +
   geom_ribbon(data = Quantile1, aes(x = Agei, ymin = lower, ymax = upper), 
-              alpha = 0.3, fill = "blue")+
-  geom_line(data = Quantile1, aes(x = Agei, y = median), color = "blue")+
+              alpha = 0.3, fill = mypallette[1])+
+  geom_line(data = Quantile1, aes(x = Agei, y = median), color = mypallette[1])+
   geom_ribbon(data = Quantile2, aes(x = Agei, ymin = lower, ymax = upper), 
-              alpha = 0.3, fill = "red")+
-  geom_line(data = Quantile2, aes(x = Agei, y = median), color = "red")+
-  geom_point(data = growthdata[growthdata$sex==0,], 
-             aes(x = age, y = radmm), color="blue")+
-  geom_point(data = growthdata[growthdata$sex==1,], 
-             aes(x = age, y = radmm), color="red")+
+              alpha = 0.3, fill = mypallette[2])+
+  geom_line(data = Quantile2, aes(x = Agei, y = median), color = mypallette[2])+
+  geom_ribbon(data = Quantile3, aes(x = Agei, ymin = lower, ymax = upper), 
+              alpha = 0.3, fill = mypallette[3])+
+  geom_line(data = Quantile3, aes(x = Agei, y = median), color = mypallette[3])+
+  geom_ribbon(data = Quantile4, aes(x = Agei, ymin = lower, ymax = upper), 
+              alpha = 0.3, fill = mypallette[4])+
+  geom_line(data = Quantile4, aes(x = Agei, y = median), color = mypallette[4])+
+  geom_ribbon(data = Quantile5, aes(x = Agei, ymin = lower, ymax = upper), 
+              alpha = 0.3, fill = mypallette[5])+
+  geom_line(data = Quantile5, aes(x = Agei, y = median), color = mypallette[5])+
+  geom_ribbon(data = Quantile6, aes(x = Agei, ymin = lower, ymax = upper), 
+              alpha = 0.3, fill = mypallette[6])+
+  geom_line(data = Quantile6, aes(x = Agei, y = median), color = mypallette[6])+
+  geom_point(data = growthdata, 
+             aes(x = agei, y = radmm), size = 0.5)+
+  labs(x="Age", y="otolith increment (mm)")+
   theme_minimal()
 
-Quantileplot
+png(filename = "Figures/Ecotypes_VB_curves.png", 
+    width = 3000, height = 1500, res = 600)
+Ecocurves
+dev.off()
 ```
 
 
