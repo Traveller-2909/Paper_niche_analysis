@@ -1,0 +1,110 @@
+//Lifelong growth dynamics of pike ecotypes
+//Hierarchical design with three levels:
+//   (1) multiple data (otolith annual growth marks) per fish 
+//   (2) several fish per ecotype
+//   (3) several ecotypes
+// Main objective: Looking for differences in Linf and k between the ecotypes
+
+data {
+  int<lower=0> N;//Number of observations
+  
+  //data vectors
+  vector<lower=0, upper=13> [N]Agei; //Age in years
+  vector<lower=0> [N]Radmm; //otolith growth increments (in mm)
+  
+  //groups
+  int<lower=1> n_fish; //number of individual fish
+  int<lower=1> n_eco; //number of ecotypes
+  int<lower=1, upper=n_fish> fish_id [N];
+  int <lower = 1, upper = n_eco> eco_id_fish [n_fish];
+}
+
+parameters {
+  real<lower=0> phi;
+
+  // fish-level raw params
+  vector<lower=0> [n_fish] LInf_i_raw;  //Mean maximum adult size at fish level
+  vector<upper=0> [n_fish] tZero_i_raw; //Age at wich size = 0 at fish level (size can´t be zero, so has to be negative)
+  vector<lower=0> [n_fish] k_i_raw;     //Growth completion parameter at fish level
+  
+  // raw parameters
+  // ecotype level
+  vector <lower=0> [n_eco] LInf_eco_raw; //Mean maximum adult size at ecotype level
+  vector <lower=0> [n_eco] k_eco_raw;    //Growth completion parameter at ecotype level
+  vector <upper=0> [n_eco] tZero_eco_raw;//Age at wich size = 0 at ecotype level
+
+  //hyperprameters
+  real<lower=0> LInf;     //Baseline expectation for mean maximum adult size
+  real<lower=0> LInf_sig; //Baseline SD for mean maximum adult size
+  real<lower=0> k;        //Baseline expectation for growth completion parameter
+  real<lower=0> k_sig;    //Baseline SD for growth completion parameter
+  real<upper=0> tZero;    //Baseline expectation for age at wich size = 0 
+  real<lower=0> tZero_sig;//Baseline SD for age at wich size = 0 
+  vector<lower=0> [n_eco] LInf_eco_sig; //SD for LInf at ecotype level
+  vector<lower=0> [n_eco] k_eco_sig;    //SD for k at ecotype level
+  vector<lower=0> [n_eco] tZero_eco_sig;//SD for tZero at ecotype level
+  }
+  
+transformed parameters {
+  //storage vectors
+  vector[N] mu;
+  vector <lower = 0> [N] alpha;
+	vector <lower = 0> [N] beta;
+
+  // ecotype-level
+  vector <lower=0> [n_eco] LInf_eco; //Mean maximum adult size at ecotype level
+  vector <lower=0> [n_eco] k_eco;    //Growth completion parameter at ecotype level
+  vector <upper=0> [n_eco] tZero_eco;//Age at wich size = 0 at ecotype level
+  
+  // fish-level
+  vector<lower=0> [n_fish] LInf_i;  //Mean maximum adult size at fish level
+  vector<upper=0> [n_fish] tZero_i; //Age at wich size = 0 at fish level (size can´t be zero, so has to be negative)
+  vector<lower=0> [n_fish] k_i;     //Growth completion parameter at fish level
+
+  // recentre and scale the ecotype parameters
+  LInf_eco = LInf + LInf_sig * LInf_eco_raw;
+  k_eco = k + k_sig * k_eco_raw;
+  tZero_eco = tZero + tZero_sig * tZero_eco_raw;
+  
+  // recentre and scale the fish parameters
+  for(i in 1:n_fish) {
+    LInf_i[i] = LInf_eco[eco_id_fish[i]] + LInf_eco_sig[eco_id_fish[i]] * LInf_i_raw[i];
+    tZero_i[i] = tZero_eco[eco_id_fish[i]] + tZero_eco_sig[eco_id_fish[i]] * tZero_i_raw[i];
+    k_i[i] = k_eco[eco_id_fish[i]] + k_eco_sig[eco_id_fish[i]] * k_i_raw[i];
+  }
+	
+   //VBGM Expectation for Length at age (fish level)
+  for(i in 1:N){
+	    mu[i] = LInf_i[fish_id[i]]*(1-exp(-k_i[fish_id[i]]*(Agei[i]-tZero_i[fish_id[i]])));
+	  }
+	  
+	alpha = square(mu)/phi;
+	beta = mu/phi;
+}
+  
+model {
+  Radmm ~ gamma(alpha,beta);
+  
+  //priors for fish level
+  LInf_i_raw ~ std_normal();
+  k_i_raw ~ std_normal();
+  tZero_i_raw ~ std_normal();
+
+	//priors for ecotype level
+	LInf_eco_raw ~ std_normal();
+  k_eco_raw ~ std_normal();
+  tZero_eco_raw ~ std_normal();
+
+  //hyperpriors
+  LInf ~ normal(0,2.5); //2.3 mm was the largest otolith radius in sample
+  LInf_sig ~ cauchy(0, 10); // gamma(0.001, 0.001); way too large, trying tighter half-cauchy variance
+  k ~ normal(0.3,0.01); //let the model choose k (literature suggestion)
+  k_sig ~ cauchy(0, 10); // gamma(0.001,0.001);
+  tZero ~ cauchy(0,5); //commonly used for this param
+  tZero_sig ~ cauchy(0, 10); // gamma(0.001,0.001);
+
+  LInf_eco_sig ~ cauchy(0, 10); // gamma(0.001,0.001);
+  k_eco_sig ~ cauchy(0, 10); // gamma(0.001,0.001);
+  tZero_eco_sig ~ cauchy(0, 10); // gamma(0.001,0.001);
+  phi ~ cauchy(0, 10); // gamma(0.001, 0.001);
+  }

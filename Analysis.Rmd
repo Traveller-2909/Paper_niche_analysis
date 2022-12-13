@@ -157,6 +157,11 @@ otoint_lowres <- cbind(d18O, dfE)
 ```
 
 ```{r covariance d18O and Sr, include=FALSE, eval=FALSE}
+#read in data
+otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt", 
+                            header = T, stringsAsFactors = F, 
+                            dec = ".", sep = "\t")
+
 #clean up
 Oto_lowres <- otoint_lowres%>%
   filter(ID!="BH-01908"&capt!="KD")%>%
@@ -240,6 +245,11 @@ dev.off()
 ```
 
 ```{r add corrected d18O to data, include=FALSE, eval=FALSE}
+#read in data
+otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt", 
+                            header = T, stringsAsFactors = F, 
+                            dec = ".", sep = "\t")
+
 #Get residuals from d18O ~ Sr
 subset_KD <- subset(otoint_lowres, capt=="KD")
 subset_KD$res <- NA
@@ -958,7 +968,7 @@ success <- data.frame(HighSBodden=round(1-length(summary[summary$clust=="High sa
                       LowSBodden=round(1-length(summary[summary$clust=="Low saline|cold"&summary$lda.error==1,]$ID)/length(summary[summary$clust=="Low saline|cold",]$ID),2),
                       HighSFW=round(1-length(summary[summary$clust=="FW high saline|warm"&summary$lda.error==1,]$ID)/length(summary[summary$clust=="FW high saline|warm",]$ID),2),
                       LowSFW=round(1-length(summary[summary$clust=="FW low saline|cold"&summary$lda.error==1,]$ID)/length(summary[summary$clust=="FW low saline|cold",]$ID),2),
-                      Overall=round(1-length(summary[summary$lda.error==1,]$ID)/length(summary$ID),2))
+                      Overall=round(1-length(summary[summary$lda.error==1,]$ID)/length(summary$ID),4))
 ```
 
 ## DTW-clustering whole sample
@@ -1072,6 +1082,7 @@ save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol, clust_B, clust_F,
 ```
 
 ```{r cluster assignment all, include=FALSE, eval=FALSE}
+rm(list=ls())
 load("Data/Pike/Adults_element_transects_all.RData")
 #assign clusters to fish
 fishassign_B2 <- data.frame(ID=names(Bseries), 
@@ -2529,21 +2540,15 @@ growthdata <- pikedata2 %>%
 # growthdata <- growthdata %>% left_join(IDall, by="id")
 
 standata_growth = list(
-  Radmm = growthdata$rad,
+  Radmm = growthdata$radmm, 
   Agei = growthdata$agei,
-  tZero_mu = mean(priors$to),
-  tZero_sig = sd(priors$to),
-  ecotype = as.integer(growthdata$ecotype),
   N = nrow(growthdata),
-  n_groupmax = as.integer(max(growthdata$id2)),
-  n_group1 = as.integer(max(growthdata[growthdata$ecotype==1,]$id2)),
-  n_group2 = as.integer(max(growthdata[growthdata$ecotype==2,]$id2)),
-  n_group3 = as.integer(max(growthdata[growthdata$ecotype==3,]$id2)),
-  n_group4 = as.integer(max(growthdata[growthdata$ecotype==4,]$id2)),
-  n_group5 = as.integer(max(growthdata[growthdata$ecotype==5,]$id2)),
-  n_group6 = as.integer(max(growthdata[growthdata$ecotype==6,]$id2)),
-  group_id = growthdata$id2
-)
+  n_fish = as.integer(max(growthdata$id3)),
+  n_eco = as.integer(max(growthdata$ecotype)),
+  fish_id = as.integer(growthdata$id3))
+fishtable = unique(growthdata[, c("id3", "ecotype")])
+fishtable = fishtable[order(fishtable$id3), ]
+standata_growth$eco_id_fish = fishtable$ecotype
 
 standata_growth_2 = list(
   Radmm = growthdata$radmm,
@@ -2558,8 +2563,8 @@ standata_growth_2 = list(
 
 ```{r individual Growth analysis, include=FALSE}
 # Script to fit individual-level growth curve
-# all groups (not working)
-stancode <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes.stan")
+# all groups (now working)
+stancode <- ("Data/Stancode/Growth_model_hierarchical_ecotypes_normal_final.stan")
 # different grouping, similar to Höhne et al., no transformation
 stancode2 <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes_2.stan")
 # different grouping with transformation
@@ -2567,21 +2572,19 @@ stancode3 <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes_3.stan")
 #normal priors
 stancode4 <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes_3_normal.stan")
 
-fit = stan(stancode4, iter = 1000, data = standata_growth_2, 
-           model_name = "Individual pike growth",
-           control = list(adapt_delta = 0.9, 
-                          max_treedepth = 12))
 
-fit_large = stan(stancode4, iter = 5000, data = standata_growth_2, 
-           model_name = "Individual pike growth",
-           control = list(adapt_delta = 0.9, 
-                          max_treedepth = 12))
+mod = stan_model(stancode, model_name = "Individual pike growth")
 
- print(fit,pars = c("LInf_eco","k_eco","tZero_eco","phi"))
+#fitting
+fit = sampling(mod, iter = 1000, data = standata_growth, 
+           control = list(adapt_delta = 0.95, 
+                          max_treedepth = 14))
 
-#Pairs plots
-pairs(fit, pars = c("LInf","k","tZero"))
-pairs(fit, pars = c("LInf_eco","k_eco"))
+ #Investigate parameters of interest (Plausible range might be e.g., 
+#LInf = 2.5 - 3.5, k = 0.1 - 0.5, tZero = -0.1 - -0.6)
+print(fit,pars = c("LInf_eco","k_eco","tZero_eco","phi")) 
+print(fit,pars = c("alpha","beta")) 
+bayesplot::mcmc_hist(as.array(fit, pars = "phi"))
 
 save(fit, file = "Data/Pike/Fit_individual_ecotypes_GM.RData")
 ```
@@ -2619,6 +2622,8 @@ res<-optim(100,fit,method="Brent",lower = 1, upper = 200)
 
 
 ```{r individual Growth analysis extract data, include=FALSE}
+load("Data/Pike/Fit_individual_ecotypes_GM.RData")
+
 samples <- as.matrix(fit, pars=c("LInf_eco", "k_eco", "tZero_eco"))
 head(samples)
 
@@ -2678,67 +2683,68 @@ Incpredict<- function(pars, Agei){
   pars[1]*(1-exp(-pars[2]*(Agei-pars[3])))
 }
 
-Pred1 <- t(apply(samples[, c(1, 7, 13)], 1, Incpredict, Agei = 1:20))
-Pred2 <- t(apply(samples[, c(2, 8, 14)], 1, Incpredict, Agei = 1:20))
-Pred3 <- t(apply(samples[, c(3, 9, 15)], 1, Incpredict, Agei = 1:20))
-Pred4 <- t(apply(samples[, c(4, 10, 16)], 1, Incpredict, Agei = 1:20))
-Pred5 <- t(apply(samples[, c(5, 11, 17)], 1, Incpredict, Agei = 1:20))
-Pred6 <- t(apply(samples[, c(6, 12, 18)], 1, Incpredict, Agei = 1:20))
+Pred1 <- t(apply(samples[, c(1, 7, 13)], 1, Incpredict, Agei = 1:15))
+Pred2 <- t(apply(samples[, c(2, 8, 14)], 1, Incpredict, Agei = 1:15))
+Pred3 <- t(apply(samples[, c(3, 9, 15)], 1, Incpredict, Agei = 1:15))
+
+Pred4 <- t(apply(samples[, c(4, 10, 16)], 1, Incpredict, Agei = 1:15))
+Pred5 <- t(apply(samples[, c(5, 11, 17)], 1, Incpredict, Agei = 1:15))
+Pred6 <- t(apply(samples[, c(6, 12, 18)], 1, Incpredict, Agei = 1:15))
 
 Predtotal <- rbind(Pred1, Pred2, Pred3, Pred4, Pred5, Pred6)
 
 #Make quantiles
 Quantile1 <- data.frame(t(apply(Pred1, 2, quantile, c(0.5, 0.05, 0.95))))
 colnames(Quantile1) <- c("median", "lower", "upper")
-Quantile1$Agei <- c(1:20)
+Quantile1$Agei <- c(1:15)
 
 Quantile2 <- data.frame(t(apply(Pred2, 2, quantile, c(0.5, 0.05, 0.95))))
 colnames(Quantile2) <- c("median", "lower", "upper")
-Quantile2$Agei <- c(1:20)
+Quantile2$Agei <- c(1:15)
 
 Quantile3 <- data.frame(t(apply(Pred3, 2, quantile, c(0.5, 0.05, 0.95))))
 colnames(Quantile3) <- c("median", "lower", "upper")
-Quantile3$Agei <- c(1:20)
+Quantile3$Agei <- c(1:15)
 
 Quantile4 <- data.frame(t(apply(Pred4, 2, quantile, c(0.5, 0.05, 0.95))))
 colnames(Quantile4) <- c("median", "lower", "upper")
-Quantile4$Agei <- c(1:20)
+Quantile4$Agei <- c(1:15)
 
 Quantile5 <- data.frame(t(apply(Pred5, 2, quantile, c(0.5, 0.05, 0.95))))
 colnames(Quantile5) <- c("median", "lower", "upper")
-Quantile5$Agei <- c(1:20)
+Quantile5$Agei <- c(1:15)
 
 Quantile6 <- data.frame(t(apply(Pred6, 2, quantile, c(0.5, 0.05, 0.95))))
 colnames(Quantile6) <- c("median", "lower", "upper")
-Quantile6$Agei <- c(1:20)
+Quantile6$Agei <- c(1:15)
 
 mypallette <- viridis::viridis(6, direction = 1)
 
 Ecocurves <- ggplot() +
-  geom_ribbon(data = Quantile1, aes(x = Agei, ymin = lower, ymax = upper), 
-              alpha = 0.3, fill = mypallette[1])+
-  geom_line(data = Quantile1, aes(x = Agei, y = median), color = mypallette[1])+
-  geom_ribbon(data = Quantile2, aes(x = Agei, ymin = lower, ymax = upper), 
-              alpha = 0.3, fill = mypallette[2])+
-  geom_line(data = Quantile2, aes(x = Agei, y = median), color = mypallette[2])+
-  geom_ribbon(data = Quantile3, aes(x = Agei, ymin = lower, ymax = upper), 
-              alpha = 0.3, fill = mypallette[3])+
-  geom_line(data = Quantile3, aes(x = Agei, y = median), color = mypallette[3])+
-  geom_ribbon(data = Quantile4, aes(x = Agei, ymin = lower, ymax = upper), 
-              alpha = 0.3, fill = mypallette[4])+
+  # geom_ribbon(data = Quantile1, aes(x = Agei, ymin = lower, ymax = upper), 
+  #             alpha = 0.3, fill = mypallette[1])+
+  # geom_line(data = Quantile1, aes(x = Agei, y = median), color = mypallette[1])+
+  # geom_ribbon(data = Quantile2, aes(x = Agei, ymin = lower, ymax = upper), 
+  #             alpha = 0.3, fill = mypallette[2])+
+  # geom_line(data = Quantile2, aes(x = Agei, y = median), color = mypallette[2])+
+  # geom_ribbon(data = Quantile3, aes(x = Agei, ymin = lower, ymax = upper), 
+  #             alpha = 0.3, fill = mypallette[3])+
+  # geom_line(data = Quantile3, aes(x = Agei, y = median), color = mypallette[3])+
+  # geom_ribbon(data = Quantile4, aes(x = Agei, ymin = lower, ymax = upper), 
+  #             alpha = 0.3, fill = mypallette[4])+
   geom_line(data = Quantile4, aes(x = Agei, y = median), color = mypallette[4])+
-  geom_ribbon(data = Quantile5, aes(x = Agei, ymin = lower, ymax = upper), 
+  geom_ribbon(data = Quantile5, aes(x = Agei, ymin = lower, ymax = upper),
               alpha = 0.3, fill = mypallette[5])+
   geom_line(data = Quantile5, aes(x = Agei, y = median), color = mypallette[5])+
-  geom_ribbon(data = Quantile6, aes(x = Agei, ymin = lower, ymax = upper), 
+  geom_ribbon(data = Quantile6, aes(x = Agei, ymin = lower, ymax = upper),
               alpha = 0.3, fill = mypallette[6])+
   geom_line(data = Quantile6, aes(x = Agei, y = median), color = mypallette[6])+
-  geom_point(data = growthdata, 
-             aes(x = agei, y = radmm), size = 0.5)+
+  # geom_point(data = growthdata, 
+  #            aes(x = agei, y = radmm), size = 0.5)+
   labs(x="Age", y="otolith increment (mm)")+
   theme_minimal()
 
-png(filename = "Figures/Ecotypes_VB_curves.png", 
+png(filename = "Figures/Ecotypes_VB_curves_freshwater.png", 
     width = 3000, height = 1500, res = 600)
 Ecocurves
 dev.off()
