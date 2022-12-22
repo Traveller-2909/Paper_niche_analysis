@@ -2463,7 +2463,7 @@ dev.off()
 ```
 
 ## VB growth models ecotypes
-```{r data prep, include=FALSE}
+```{r data prep, include=FALSE, eval=FALSE}
 rm(list = ls())
 
 # load data
@@ -2561,7 +2561,7 @@ standata_growth_2 = list(
 )
 ```
 
-```{r individual Growth analysis, include=FALSE}
+```{r individual Growth analysis, include=FALSE, eval=FALSE}
 # Script to fit individual-level growth curve
 # all groups (now working)
 stancode <- ("Data/Stancode/Growth_model_hierarchical_ecotypes_normal_final.stan")
@@ -2621,7 +2621,7 @@ res<-optim(100,fit,method="Brent",lower = 1, upper = 200)
 ```
 
 
-```{r individual Growth analysis extract data, include=FALSE}
+```{r individual Growth analysis extract data, include=FALSE, eval=FALSE}
 load("Data/Pike/Fit_individual_ecotypes_GM.RData")
 
 samples <- as.matrix(fit, pars=c("LInf_eco", "k_eco", "tZero_eco"))
@@ -2639,7 +2639,7 @@ mcmc_intervals(sample_phi)
 summary(fit, pars = "LInf_eco")
 ```
 
-```{r individual Growth analysis evaluation}
+```{r individual Growth analysis evaluation, include=FALSE, eval=FALSE}
 #Evaluation of Stan model for individual fish
 #write data matrix for plotting
 samples <- as.matrix(fit, pars=c("LInf1","LInf2","k1_mu","k1_sig","k2_mu","k2_sig","tZero1", "tZero2"))
@@ -2675,7 +2675,7 @@ pairs(fit, pars = c("LInf2", "k2_mu", "k2_sig", "tZero2"))
 #same
 ```
 
-```{r individual Growth analysis plotting}
+```{r individual Growth analysis plotting, include=FALSE, eval=FALSE}
 #prediction function
 head(samples)
 
@@ -2790,7 +2790,16 @@ png(filename = "Figures/VB-curves-ecotypes.png",
 annotate_figure(Fig, top = text_grob("Lifelong growth of pike ecotypes", 
                                      color = "black", face = "bold", size = 15, vjust = 1.1, hjust = 1))
 dev.off()
-
 ```
+```{r stable isotope data}
+rm(list = ls())
+
+#read in pike data
+Pikedata <- read.delim("Data/Pike/Pikedata_model.txt", header = T, stringsAsFactors = F, sep = "\t", dec = ".")
+
+#read in isotope data
+SIdata <- read.delim("Data/Pike/2022-09-08_NCS_TRittweg_Results_clean.txt", header = T, stringsAsFactors = F, sep = "\t", dec = ".")
+```
+
 
 
