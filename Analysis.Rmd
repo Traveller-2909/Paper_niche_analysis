@@ -1269,7 +1269,7 @@ A <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="High saline|warm",])+
         axis.ticks.x = element_line(colour = "transparent"),
         axis.title.y = element_text(size = 8, margin = margin(r=10)))+
   coord_cartesian(clip = "off")+
-  annotation_custom(grob = text_grob(label = "High S, thermal constant (N=35)",
+  annotation_custom(grob = text_grob(label = "FW high S, thermal shift (N=9)",
                                      face = "bold", size = 8),
                     ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
 
@@ -2720,34 +2720,77 @@ Quantile6$Agei <- c(1:15)
 
 mypallette <- viridis::viridis(6, direction = 1)
 
-Ecocurves <- ggplot() +
-  # geom_ribbon(data = Quantile1, aes(x = Agei, ymin = lower, ymax = upper), 
-  #             alpha = 0.3, fill = mypallette[1])+
-  # geom_line(data = Quantile1, aes(x = Agei, y = median), color = mypallette[1])+
-  # geom_ribbon(data = Quantile2, aes(x = Agei, ymin = lower, ymax = upper), 
-  #             alpha = 0.3, fill = mypallette[2])+
-  # geom_line(data = Quantile2, aes(x = Agei, y = median), color = mypallette[2])+
-  # geom_ribbon(data = Quantile3, aes(x = Agei, ymin = lower, ymax = upper), 
-  #             alpha = 0.3, fill = mypallette[3])+
-  # geom_line(data = Quantile3, aes(x = Agei, y = median), color = mypallette[3])+
-  # geom_ribbon(data = Quantile4, aes(x = Agei, ymin = lower, ymax = upper), 
-  #             alpha = 0.3, fill = mypallette[4])+
-  geom_line(data = Quantile4, aes(x = Agei, y = median), color = mypallette[4])+
-  geom_ribbon(data = Quantile5, aes(x = Agei, ymin = lower, ymax = upper),
-              alpha = 0.3, fill = mypallette[5])+
-  geom_line(data = Quantile5, aes(x = Agei, y = median), color = mypallette[5])+
-  geom_ribbon(data = Quantile6, aes(x = Agei, ymin = lower, ymax = upper),
-              alpha = 0.3, fill = mypallette[6])+
-  geom_line(data = Quantile6, aes(x = Agei, y = median), color = mypallette[6])+
-  # geom_point(data = growthdata, 
-  #            aes(x = agei, y = radmm), size = 0.5)+
+Brackish_VB <- ggplot() +
+  geom_ribbon(data = Quantile1, aes(x = Agei, ymin = lower, ymax = upper, fill = "FW high S, thermal shift (N=9)"),
+              alpha = 0.3)+
+  geom_line(data = Quantile1, aes(x = Agei, y = median, color = "FW high S, thermal shift (N=9)"), size=2)+
+  geom_ribbon(data = Quantile2, aes(x = Agei, ymin = lower, ymax = upper, fill = "Int. S, thermal cold (N=15)"),
+              alpha = 0.3)+
+  geom_line(data = Quantile2, aes(x = Agei, y = median, color = "Int. S, thermal cold (N=15)"), size=2)+
+  geom_ribbon(data = Quantile3, aes(x = Agei, ymin = lower, ymax = upper, fill = "Low S, thermal shift (N=19)"),
+              alpha = 0.3)+
+  geom_line(data = Quantile3, aes(x = Agei, y = median, color = "Low S, thermal shift (N=19)"), size=2)+
+  scale_color_manual(name = "Assigned cluster",
+                     labels = c("FW high S, thermal shift (N=9)","Int. S, thermal cold (N=15)","Low S, thermal shift (N=19)"),
+                     values = c(mypallette[1], mypallette[2], mypallette[3]))+
+  scale_fill_manual(name = "Assigned cluster",
+                    labels = c("FW high S, thermal shift (N=9)","Int. S, thermal cold (N=15)","Low S, thermal shift (N=19)"),
+                    values = c(mypallette[1], mypallette[2], mypallette[3]))+
+  theme_classic()+
   labs(x="Age", y="otolith increment (mm)")+
-  theme_minimal()
+    theme(panel.grid.major = element_line(),
+        legend.box.background = element_rect(),
+        axis.line = element_line(size = .5, colour = "black", linetype = 1),
+        axis.ticks = element_line(size = .5, colour = "black"),
+        axis.text = element_text(size = 10, colour = "black"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        axis.title.x = element_text(size = 10, face = "bold"),
+        axis.title.y = element_text(size = 10, face = "bold"),
+        legend.text = element_text(size = 5),
+        legend.title = element_text(size = 5, face = "bold"),
+        legend.key.size = unit(.5,"line"),
+        legend.position = c(0.3,0.8))
 
-png(filename = "Figures/Ecotypes_VB_curves_freshwater.png", 
-    width = 3000, height = 1500, res = 600)
-Ecocurves
+Fresh_VB <- ggplot() +
+  geom_ribbon(data = Quantile4, aes(x = Agei, ymin = lower, ymax = upper, fill = "FW high S, thermal shift (N=9)"),
+              alpha = 0.3)+
+  geom_line(data = Quantile4, aes(x = Agei, y = median, color = "FW high S, thermal shift (N=9)"), size=2)+
+  geom_ribbon(data = Quantile5, aes(x = Agei, ymin = lower, ymax = upper, fill = "FW resident, thermal cold (N=4)"),
+              alpha = 0.3)+
+  geom_line(data = Quantile5, aes(x = Agei, y = median, color = "FW resident, thermal cold (N=4)"), size=2)+
+  geom_ribbon(data = Quantile6, aes(x = Agei, ymin = lower, ymax = upper, fill = "FW resident, thermal shift (N=4)"),
+              alpha = 0.3)+
+  geom_line(data = Quantile6, aes(x = Agei, y = median, color = "FW resident, thermal shift (N=4)"), size=2)+
+  scale_color_manual(name = "Assigned cluster",
+                     labels = c("FW high S, thermal shift (N=9)","FW resident, thermal cold (N=4)","FW resident, thermal shift (N=4)"),
+                     values = c(mypallette[4], mypallette[5], mypallette[6]))+
+  scale_fill_manual(name = "Assigned cluster",
+                    labels = c("FW high S, thermal shift (N=9)","FW resident, thermal cold (N=4)","FW resident, thermal shift (N=4)"),
+                    values = c(mypallette[4], mypallette[5], mypallette[6]))+
+  theme_classic()+
+  labs(x="Age", y="otolith increment (mm)")+
+    theme(panel.grid.major = element_line(),
+        legend.box.background = element_rect(),
+        axis.line = element_line(size = .5, colour = "black", linetype = 1),
+        axis.ticks = element_line(size = .5, colour = "black"),
+        axis.text = element_text(size = 10, colour = "black"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        axis.title.x = element_text(size = 10, face = "bold"),
+        axis.title.y = element_text(size = 10, face = "bold"),
+        legend.text = element_text(size = 5),
+        legend.title = element_text(size = 5, face = "bold"),
+        legend.key.size = unit(.5,"line"),
+        legend.position = c(0.3,0.8))
+
+Fig <- ggarrange(Brackish_VB, Fresh_VB, align = "h", labels = c("A", "B"), 
+                 label.x = .02, label.y = 1.05)
+
+png(filename = "Figures/VB-curves-ecotypes.png", 
+    width = 4500, height = 2000, res = 600)
+annotate_figure(Fig, top = text_grob("Lifelong growth of pike ecotypes", 
+                                     color = "black", face = "bold", size = 15, vjust = 1.1, hjust = 1))
 dev.off()
+
 ```
 
 

@@ -53,7 +53,7 @@ transformed parameters {
 
   // ecotype-level
   vector <lower=0> [n_eco] LInf_eco; //Mean maximum adult size at ecotype level
-  vector <lower=0> [n_eco] k_eco;    //Growth completion parameter at ecotype level
+  vector <lower=0.2> [n_eco] k_eco;    //Growth completion parameter at ecotype level
   vector <upper=0> [n_eco] tZero_eco;//Age at wich size = 0 at ecotype level
   
   // fish-level
@@ -98,7 +98,7 @@ model {
   //hyperpriors
   LInf ~ normal(0,2.5); //2.3 mm was the largest otolith radius in sample
   LInf_sig ~ cauchy(0, 10); // gamma(0.001, 0.001); way too large, trying tighter half-cauchy variance
-  k ~ normal(0.3,0.01); //let the model choose k (literature suggestion)
+  k ~ uniform(0,1); //let the model choose k (literature suggestion)
   k_sig ~ cauchy(0, 10); // gamma(0.001,0.001);
   tZero ~ cauchy(0,5); //commonly used for this param
   tZero_sig ~ cauchy(0, 10); // gamma(0.001,0.001);
