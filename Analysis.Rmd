@@ -158,7 +158,9 @@ otoint_lowres <- cbind(d18O, dfE)
 
 ```{r covariance d18O and Sr, include=FALSE, eval=FALSE}
 #read in data
-otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt", 
+rm(list = ls())
+
+#otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt", 
                             header = T, stringsAsFactors = F, 
                             dec = ".", sep = "\t")
 
@@ -246,13 +248,15 @@ dev.off()
 
 ```{r add corrected d18O to data, include=FALSE, eval=FALSE}
 #read in data
-otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt", 
-                            header = T, stringsAsFactors = F, 
-                            dec = ".", sep = "\t")
+rm(list = ls())
+
+# otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt", 
+#                             header = T, stringsAsFactors = F, 
+#                             dec = ".", sep = "\t")
 
 #Get residuals from d18O ~ Sr
 subset_KD <- subset(otoint_lowres, capt=="KD")
-subset_KD$res <- NA
+#subset_KD$res <- NA
 otoint_lowres <- otoint_lowres%>%drop_na()%>%filter(capt!="KD")%>%filter(ID!="BH-01908")
 
 #0-model
@@ -269,6 +273,10 @@ summary(lm1)
 
 
 otoint_lowres$res <- lm1$residuals
+
+subset_KD$res <- scale(subset_KD$d18O)
+subset_KD <- subset_KD%>%drop_na()
+
 otoint_lowres <- rbind(otoint_lowres, subset_KD)
 
 #check for pattern retention
@@ -289,8 +297,8 @@ otoint_lowres <- otoint_lowres%>%
             age=age,
             capt=capt,
             area=area,
-            d18O=zoo::rollmean(d18O, k=7, fill = NA, align = "left"),
-            res=zoo::rollmean(res, k=7, fill = NA, align = "left"),
+            d18O=zoo::rollmean(d18O, k=8, fill = NA, align = "left"),
+            res=zoo::rollmean(res, k=8, fill = NA, align = "left"),
             Sr=Sr,
             Na=Na,
             Mg=Mg,
@@ -322,7 +330,8 @@ otoint_lifehist <- otoint_lowres%>%
             area=case_when(area=="WRB"~"Lagoon",
                            area=="NRB"~"Lagoon",
                            area=="Marine"~"Lagoon",
-                           area=="Freshwater"~"Tributary"),
+                           area=="Freshwater"~"Tributary",
+                           area=="Control"~"Control lake"),
             d18O=d18O,
             d18O_res=res,
             Sr=Sr,
@@ -2161,6 +2170,7 @@ str(pikes)
 pikes2 <- pikes%>%
   transmute(ID=ID,
             waterbody=as.factor(waterbody),
+            TL=TL,
             clust=as.factor(clust),
             sex=as.factor(sex),
             lifeyear=lifeyear,
@@ -2206,7 +2216,7 @@ hist(pikes2$Sr_mean, main = "", xlab = "Sr concentration")
 plot(0, xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
 ```
 
-## Initial model
+## Initial model (Try using exponential term for age!!!)
 $$log10(Inc) \sim Age*cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc/ID)$$
 
 ```{r exclude random effect of ID, include=FALSE, eval=FALSE}
@@ -2505,7 +2515,6 @@ pikedata2 <- pikedata %>% filter(area != "KD") %>% filter(id != "BH-01908")%>%
 # Cleanup
 growthdata <- pikedata2 %>%
   transmute(id = id,
-            id2 = id2,
             id3 = id3,
             sex = sex,
             weight = weight,
@@ -2517,7 +2526,7 @@ growthdata <- pikedata2 %>%
             agei = agei,
             ecotype=ecotype)
 
-
+write.table(growthdata, file = "Pikedata.txt", row.names = F, sep = "\t", dec = ".")
 
 #Binary variable for sex
 #growthdata$sex <- ifelse(growthdata$sex == "f", 0, 1)
@@ -2563,6 +2572,9 @@ standata_growth_2 = list(
 
 ```{r individual Growth analysis, include=FALSE, eval=FALSE}
 # Script to fit individual-level growth curve
+
+rm(list = ls())
+
 # all groups (now working)
 stancode <- ("Data/Stancode/Growth_model_hierarchical_ecotypes_normal_final.stan")
 # different grouping, similar to Höhne et al., no transformation
@@ -2576,7 +2588,7 @@ stancode4 <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes_3_normal.stan")
 mod = stan_model(stancode, model_name = "Individual pike growth")
 
 #fitting
-fit = sampling(mod, iter = 1000, data = standata_growth, 
+fit = sampling(mod, iter = 10000, data = standata_growth, 
            control = list(adapt_delta = 0.95, 
                           max_treedepth = 14))
 
@@ -2620,23 +2632,27 @@ res<-optim(100,fit,method="Brent",lower = 1, upper = 200)
 
 ```
 
-
 ```{r individual Growth analysis extract data, include=FALSE, eval=FALSE}
+
+rm(list = ls())
+
 load("Data/Pike/Fit_individual_ecotypes_GM.RData")
 
 samples <- as.matrix(fit, pars=c("LInf_eco", "k_eco", "tZero_eco"))
 head(samples)
 
-sample_LInf <- as.array(fit, pars = c("LInf", "LInf1"))
+sd(samples[,2])
+
+sample_LInf <- as.array(fit, pars = c("LInf_eco"))
 mcmc_intervals(sample_LInf)
-sample_k <- as.array(fit, pars = c("k", "k1"))
+sample_k <- as.array(fit, pars = c("k_eco"))
 mcmc_intervals(sample_k)
-sample_tZero <- as.array(fit, pars = c("tZero", "tZero1"))
+sample_tZero <- as.array(fit, pars = c("tZero_eco"))
 mcmc_intervals(sample_tZero)
 sample_phi <- as.array(fit, pars = "phi")
 mcmc_intervals(sample_phi)
 
-summary(fit, pars = "LInf_eco")
+print(fit, pars = "tZero_eco")
 ```
 
 ```{r individual Growth analysis evaluation, include=FALSE, eval=FALSE}
@@ -2721,9 +2737,9 @@ Quantile6$Agei <- c(1:15)
 mypallette <- viridis::viridis(6, direction = 1)
 
 Brackish_VB <- ggplot() +
-  geom_ribbon(data = Quantile1, aes(x = Agei, ymin = lower, ymax = upper, fill = "FW high S, thermal shift (N=9)"),
+  geom_ribbon(data = Quantile1, aes(x = Agei, ymin = lower, ymax = upper, fill = "High S, thermal shift (N=35)"),
               alpha = 0.3)+
-  geom_line(data = Quantile1, aes(x = Agei, y = median, color = "FW high S, thermal shift (N=9)"), size=2)+
+  geom_line(data = Quantile1, aes(x = Agei, y = median, color = "High S, thermal shift (N=35)"), size=2)+
   geom_ribbon(data = Quantile2, aes(x = Agei, ymin = lower, ymax = upper, fill = "Int. S, thermal cold (N=15)"),
               alpha = 0.3)+
   geom_line(data = Quantile2, aes(x = Agei, y = median, color = "Int. S, thermal cold (N=15)"), size=2)+
@@ -2731,11 +2747,14 @@ Brackish_VB <- ggplot() +
               alpha = 0.3)+
   geom_line(data = Quantile3, aes(x = Agei, y = median, color = "Low S, thermal shift (N=19)"), size=2)+
   scale_color_manual(name = "Assigned cluster",
-                     labels = c("FW high S, thermal shift (N=9)","Int. S, thermal cold (N=15)","Low S, thermal shift (N=19)"),
+                     labels = c("High S, thermal shift (N=35)","Int. S, thermal cold (N=15)","Low S, thermal shift (N=19)"),
                      values = c(mypallette[1], mypallette[2], mypallette[3]))+
   scale_fill_manual(name = "Assigned cluster",
-                    labels = c("FW high S, thermal shift (N=9)","Int. S, thermal cold (N=15)","Low S, thermal shift (N=19)"),
+                    labels = c("High S, thermal shift (N=35)","Int. S, thermal cold (N=15)","Low S, thermal shift (N=19)"),
                     values = c(mypallette[1], mypallette[2], mypallette[3]))+
+  geom_point(data = growthdata[growthdata$ecotype==1|
+                                 growthdata$ecotype==2|
+                                 growthdata$ecotype==3,], aes(x=agei,y=radmm, group=id), size=1, alpha=.9, color="black")+
   theme_classic()+
   labs(x="Age", y="otolith increment (mm)")+
     theme(panel.grid.major = element_line(),
@@ -2767,6 +2786,9 @@ Fresh_VB <- ggplot() +
   scale_fill_manual(name = "Assigned cluster",
                     labels = c("FW high S, thermal shift (N=9)","FW resident, thermal cold (N=4)","FW resident, thermal shift (N=4)"),
                     values = c(mypallette[4], mypallette[5], mypallette[6]))+
+  geom_point(data = growthdata[growthdata$ecotype==4|
+                                 growthdata$ecotype==5|
+                                 growthdata$ecotype==6,], aes(x=agei,y=radmm, group=id), size=1, alpha=.9, color="black")+
   theme_classic()+
   labs(x="Age", y="otolith increment (mm)")+
     theme(panel.grid.major = element_line(),
@@ -2785,12 +2807,13 @@ Fresh_VB <- ggplot() +
 Fig <- ggarrange(Brackish_VB, Fresh_VB, align = "h", labels = c("A", "B"), 
                  label.x = .02, label.y = 1.05)
 
-png(filename = "Figures/VB-curves-ecotypes.png", 
+png(filename = "Figures/VB-curves-ecotypes-withpoints.png", 
     width = 4500, height = 2000, res = 600)
 annotate_figure(Fig, top = text_grob("Lifelong growth of pike ecotypes", 
                                      color = "black", face = "bold", size = 15, vjust = 1.1, hjust = 1))
 dev.off()
 ```
+
 ```{r stable isotope data}
 rm(list = ls())
 
@@ -2813,6 +2836,9 @@ SIdata.clean <- SIdata%>%
 
 PikeSI <- Pikedata%>%inner_join(SIdata.clean, by="ID")%>%
   transmute(ID=ID,
+            waterbody=waterbody,
+            age=as.factor(lifeyear),
+            agefact=as.factor(agefact2),
             d15N=d15N,
             d13C=d13C,
             d34S=d34S,
@@ -2822,8 +2848,8 @@ PikeSI <- Pikedata%>%inner_join(SIdata.clean, by="ID")%>%
             clust=clust)%>%
   distinct()
 
-Carbon <- ggplot(PikeSI, aes(d15N, d13C, color=clust))+geom_point()+theme_minimal()+
-  stat_ellipse(aes(fill = clust, color = clust), alpha = 0.2, level = 0.95, geom = "polygon")+
+Carbon <- ggplot(PikeSI, aes(d15N, d34S, color=waterbody))+geom_point()+theme_minimal()+
+  stat_ellipse(aes(fill = waterbody, color = waterbody), alpha = 0.2, level = 0.95, geom = "polygon")+
   scale_color_viridis_d(direction = -1)+
   scale_fill_viridis_d(direction = -1)+
   theme(panel.background = element_blank(), panel.grid.major = element_line(colour = "grey", size = 0.5),
@@ -2835,8 +2861,8 @@ Carbon <- ggplot(PikeSI, aes(d15N, d13C, color=clust))+geom_point()+theme_minima
   xlab(expression(atop(delta^15*"N")))+ 
   ylab(expression(atop(delta^13*"C")))
 
-Sulphur <- ggplot(PikeSI, aes(d15N, d34S, color=clust))+geom_point()+theme_minimal()+
-  stat_ellipse(aes(fill = clust, color = clust), alpha = 0.2, level = 0.95, geom = "polygon")+
+Sulphur <- ggplot(PikeSI, aes(d15N, d34S, color=waterbody))+geom_point()+theme_minimal()+
+  stat_ellipse(aes(fill = waterbody, color = waterbody), alpha = 0.2, level = 0.95, geom = "polygon")+
   scale_color_viridis_d(direction = -1)+
   scale_fill_viridis_d(direction = -1)+
   theme(panel.background = element_blank(), panel.grid.major = element_line(colour = "grey", size = 0.5),
@@ -2857,6 +2883,3 @@ annotate_figure(Fig, top = text_grob("SI signature of pike ecotypes",
                                      color = "black", face = "bold", size = 15, vjust = 0.8, hjust = 1))
 dev.off()
 ```
-
-
-

@@ -1,0 +1,223 @@
+---
+title: "Individual_growth_analysis"
+author: "TR"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages, include=FALSE}
+library(ggplot2)
+library(ggpubr)
+library(loo)
+library(bayesplot)
+library("rstan")
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+```
+
+```{r data prep, include=FALSE, eval=FALSE}
+rm(list = ls())
+
+#read in data
+growthdata <- read.delim("Data/Pike/Pikedata.txt", header = T, stringsAsFactors = F, sep = "\t", dec = ".")
+#Data frame with pike ID, numeric ID, sex, weight, length and capture area, along with total age, age at each incement formation (agei), radius in mm (radmm - cumulative increments at agei), and cluster assignment (ecotype --> 1 = High saline lagoon resident; 2 = Medium saline lagoon resident; 3 = habitat shift type; 4 = anadromous type; 5 = freshwater resident type 1; 6 = freshwater resident type 2)
+
+#Alternative grouping for ecotypes could be performed to incrase sample size per type: group 1 & 2 together as brackish resident type, group 5 & 6 together as freshwater resident type, leave 3 & 4 unchanged, resulting in 4 ecotypes
+
+standata_growth = list(
+  Radmm = growthdata$radmm, 
+  Agei = growthdata$agei,
+  N = nrow(growthdata),
+  n_fish = as.integer(max(growthdata$id3)),
+  n_eco = as.integer(max(growthdata$ecotype)),
+  fish_id = as.integer(growthdata$id3))
+fishtable = unique(growthdata[, c("id3", "ecotype")])
+fishtable = fishtable[order(fishtable$id3), ]
+standata_growth$eco_id_fish = fishtable$ecotype
+```
+
+```{r individual Growth analysis, include=FALSE, eval=FALSE}
+# Script to fit individual-level growth curve
+# all groups (now sampling well, but doesn´t fit very well)
+stancode <- ("Data/Stan/Growth_model_hierarchical_ecotypes_normal_final.stan")
+
+#ugly model, runs bad with divergent transitions and treedepth issues, but fits data well
+stancode2 <- ("Data/Stan/Growth_model_hierarchical4_ecotypes_3_normal.stan")
+
+mod = stan_model(stancode, model_name = "Individual pike growth")
+
+#fitting
+fit = sampling(mod, iter = 10000, data = standata_growth, 
+           control = list(adapt_delta = 0.95, 
+                          max_treedepth = 14))
+
+ #Investigate parameters of interest (Plausible range might be e.g., 
+#LInf = 2.5 - 3.5, k = 0.1 - 0.5, tZero = -0.1 - -0.6)
+print(fit,pars = c("LInf_eco","k_eco","tZero_eco","phi")) 
+print(fit,pars = c("alpha","beta")) 
+
+save(fit, file = "Data/Pike/Fit_individual_ecotypes_GM.RData")
+```
+
+```{r individual Growth analysis extract data, include=FALSE, eval=FALSE}
+#Load fit
+load("Data/Pike/Fit_individual_ecotypes_GM.RData")
+
+#Extract samples
+samples <- as.matrix(fit, pars=c("LInf_eco", "k_eco", "tZero_eco"))
+head(samples)
+
+#write data matrix for plotting
+samples <- as.matrix(fit, pars=c("LInf_eco","k_eco","tZero_eco"))
+head(samples)
+
+#write arrays for eval
+sample_LInf <- as.array(fit, pars = c("LInf_eco"))
+sample_k <- as.array(fit, pars = c("k_eco"))
+sample_tZero <- as.array(fit, pars = c("tZero_eco"))
+sample_phi <- as.array(fit, pars = "phi")
+
+#Look at parameter space with intervals
+mcmc_intervals(sample_LInf)
+mcmc_intervals(sample_k)
+mcmc_intervals(sample_tZero)
+mcmc_intervals(sample_phi)
+
+#Look at summary stats
+summary(fit, pars = c("LInf_eco"))
+summary(fit, pars = c("k_eco"))
+summary(fit, pars = c("tZero_eco"))
+summary(fit, pars = c("phi"))
+
+#MCMC combo plots
+mcmc_combo(samples, c("hist", "trace"), pars = c("LInf_eco[1]","LInf_eco[2]","LInf_eco[3]","LInf_eco[4]",
+                                                 "LInf_eco[5]", "LInf_eco[6]"))
+mcmc_combo(samples, c("hist", "trace"), pars = c("tZero_eco[1]", "tZero_eco[2]","tZero_eco[3]","tZero_eco[4]",
+                                                 "tZero_eco[5]","tZero_eco[6]"))
+mcmc_combo(samples, c("hist", "trace"), pars = c("k_eco[1]", "k_eco[2]","k_eco[3]","k_eco[4]","k_eco[5]","k_eco[6]"))
+
+#Pairs plots
+pairs(fit, pars = c("LInf_eco", "k_eco", "tZero_eco", "phi"))
+```
+
+```{r individual Growth analysis plotting, include=FALSE, eval=FALSE}
+#prediction function using VB equation
+Incpredict<- function(pars, Agei){
+  pars[1]*(1-exp(-pars[2]*(Agei-pars[3])))
+}
+
+#Apply over all ecotypes
+Pred1 <- t(apply(samples[, c(1, 7, 13)], 1, Incpredict, Agei = 1:15))
+Pred2 <- t(apply(samples[, c(2, 8, 14)], 1, Incpredict, Agei = 1:15))
+Pred3 <- t(apply(samples[, c(3, 9, 15)], 1, Incpredict, Agei = 1:15))
+
+Pred4 <- t(apply(samples[, c(4, 10, 16)], 1, Incpredict, Agei = 1:15))
+Pred5 <- t(apply(samples[, c(5, 11, 17)], 1, Incpredict, Agei = 1:15))
+Pred6 <- t(apply(samples[, c(6, 12, 18)], 1, Incpredict, Agei = 1:15))
+
+#Group together
+Predtotal <- rbind(Pred1, Pred2, Pred3, Pred4, Pred5, Pred6)
+
+#Extract quantiles
+Quantile1 <- data.frame(t(apply(Pred1, 2, quantile, c(0.5, 0.05, 0.95))))
+colnames(Quantile1) <- c("median", "lower", "upper")
+Quantile1$Agei <- c(1:15)
+
+Quantile2 <- data.frame(t(apply(Pred2, 2, quantile, c(0.5, 0.05, 0.95))))
+colnames(Quantile2) <- c("median", "lower", "upper")
+Quantile2$Agei <- c(1:15)
+
+Quantile3 <- data.frame(t(apply(Pred3, 2, quantile, c(0.5, 0.05, 0.95))))
+colnames(Quantile3) <- c("median", "lower", "upper")
+Quantile3$Agei <- c(1:15)
+
+Quantile4 <- data.frame(t(apply(Pred4, 2, quantile, c(0.5, 0.05, 0.95))))
+colnames(Quantile4) <- c("median", "lower", "upper")
+Quantile4$Agei <- c(1:15)
+
+Quantile5 <- data.frame(t(apply(Pred5, 2, quantile, c(0.5, 0.05, 0.95))))
+colnames(Quantile5) <- c("median", "lower", "upper")
+Quantile5$Agei <- c(1:15)
+
+Quantile6 <- data.frame(t(apply(Pred6, 2, quantile, c(0.5, 0.05, 0.95))))
+colnames(Quantile6) <- c("median", "lower", "upper")
+Quantile6$Agei <- c(1:15)
+
+#Plot
+mypallette <- viridis::viridis(6, direction = 1)
+
+Brackish_VB <- ggplot() +
+  geom_ribbon(data = Quantile1, aes(x = Agei, ymin = lower, ymax = upper, fill = "High S, thermal shift (N=35)"),
+              alpha = 0.3)+
+  geom_line(data = Quantile1, aes(x = Agei, y = median, color = "High S, thermal shift (N=35)"), size=2)+
+  geom_ribbon(data = Quantile2, aes(x = Agei, ymin = lower, ymax = upper, fill = "Int. S, thermal cold (N=15)"),
+              alpha = 0.3)+
+  geom_line(data = Quantile2, aes(x = Agei, y = median, color = "Int. S, thermal cold (N=15)"), size=2)+
+  geom_ribbon(data = Quantile3, aes(x = Agei, ymin = lower, ymax = upper, fill = "Low S, thermal shift (N=19)"),
+              alpha = 0.3)+
+  geom_line(data = Quantile3, aes(x = Agei, y = median, color = "Low S, thermal shift (N=19)"), size=2)+
+  scale_color_manual(name = "Assigned cluster",
+                     labels = c("High S, thermal shift (N=35)","Int. S, thermal cold (N=15)","Low S, thermal shift (N=19)"),
+                     values = c(mypallette[1], mypallette[2], mypallette[3]))+
+  scale_fill_manual(name = "Assigned cluster",
+                    labels = c("High S, thermal shift (N=35)","Int. S, thermal cold (N=15)","Low S, thermal shift (N=19)"),
+                    values = c(mypallette[1], mypallette[2], mypallette[3]))+
+  geom_point(data = growthdata[growthdata$ecotype==1|
+                                 growthdata$ecotype==2|
+                                 growthdata$ecotype==3,], aes(x=agei,y=radmm, group=id), size=1, alpha=.9, color="black")+
+  theme_classic()+
+  labs(x="Age", y="otolith increment (mm)")+
+    theme(panel.grid.major = element_line(),
+        legend.box.background = element_rect(),
+        axis.line = element_line(size = .5, colour = "black", linetype = 1),
+        axis.ticks = element_line(size = .5, colour = "black"),
+        axis.text = element_text(size = 10, colour = "black"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        axis.title.x = element_text(size = 10, face = "bold"),
+        axis.title.y = element_text(size = 10, face = "bold"),
+        legend.text = element_text(size = 5),
+        legend.title = element_text(size = 5, face = "bold"),
+        legend.key.size = unit(.5,"line"),
+        legend.position = c(0.3,0.8))
+
+Fresh_VB <- ggplot() +
+  geom_ribbon(data = Quantile4, aes(x = Agei, ymin = lower, ymax = upper, fill = "FW high S, thermal shift (N=9)"),
+              alpha = 0.3)+
+  geom_line(data = Quantile4, aes(x = Agei, y = median, color = "FW high S, thermal shift (N=9)"), size=2)+
+  geom_ribbon(data = Quantile5, aes(x = Agei, ymin = lower, ymax = upper, fill = "FW resident, thermal cold (N=4)"),
+              alpha = 0.3)+
+  geom_line(data = Quantile5, aes(x = Agei, y = median, color = "FW resident, thermal cold (N=4)"), size=2)+
+  geom_ribbon(data = Quantile6, aes(x = Agei, ymin = lower, ymax = upper, fill = "FW resident, thermal shift (N=4)"),
+              alpha = 0.3)+
+  geom_line(data = Quantile6, aes(x = Agei, y = median, color = "FW resident, thermal shift (N=4)"), size=2)+
+  scale_color_manual(name = "Assigned cluster",
+                     labels = c("FW high S, thermal shift (N=9)","FW resident, thermal cold (N=4)","FW resident, thermal shift (N=4)"),
+                     values = c(mypallette[4], mypallette[5], mypallette[6]))+
+  scale_fill_manual(name = "Assigned cluster",
+                    labels = c("FW high S, thermal shift (N=9)","FW resident, thermal cold (N=4)","FW resident, thermal shift (N=4)"),
+                    values = c(mypallette[4], mypallette[5], mypallette[6]))+
+  geom_point(data = growthdata[growthdata$ecotype==4|
+                                 growthdata$ecotype==5|
+                                 growthdata$ecotype==6,], aes(x=agei,y=radmm, group=id), size=1, alpha=.9, color="black")+
+  theme_classic()+
+  labs(x="Age", y="otolith increment (mm)")+
+    theme(panel.grid.major = element_line(),
+        legend.box.background = element_rect(),
+        axis.line = element_line(size = .5, colour = "black", linetype = 1),
+        axis.ticks = element_line(size = .5, colour = "black"),
+        axis.text = element_text(size = 10, colour = "black"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        axis.title.x = element_text(size = 10, face = "bold"),
+        axis.title.y = element_text(size = 10, face = "bold"),
+        legend.text = element_text(size = 5),
+        legend.title = element_text(size = 5, face = "bold"),
+        legend.key.size = unit(.5,"line"),
+        legend.position = c(0.3,0.8))
+
+ggarrange(Brackish_VB, Fresh_VB, align = "h", labels = c("A", "B"), 
+                 label.x = .02, label.y = 1.05)
+```
