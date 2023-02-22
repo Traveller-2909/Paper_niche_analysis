@@ -43,17 +43,18 @@ rstan_options(auto_write = TRUE)
 #Read in LA-ICPMS and SIMS data
 rm(list = ls())
 
-LA <- read.delim("Data/Pike/pike_data_LA-ICPMS_years_with_core.txt", 
+LA <- read.delim("Data/Pike/Pike-LA-ICPMS-years_whole-sample_with-TL.txt", 
                  header = T, stringsAsFactors = F, sep = "\t", dec = ".")
 
-d18O <- read.delim("Data/Pike/pike_data_d18O_years.txt", header = T,
+d18O <- read.delim("Data/Pike/Pike-d18O-years_whole-sample_with-TL.txt", header = T,
                 stringsAsFactors = F, sep = "\t", dec = ".")
 
 #Clean up data & assign capture locations to main areas
 #Trace element data
-LA <- LA%>%
+LA_clean <- LA%>%
   filter(LA_dist>=50)%>%
-  transmute(ID = ID,
+  filter(comment=="OK")%>%
+  transmute(fish_ID = fishID,
             age=age,
             capt = area,
             area = case_when(area %in% "Peene" ~ "Freshwater",
@@ -77,18 +78,19 @@ LA <- LA%>%
             Ba = Ba,
             Mn = Mn,
             LA_dist = LA_dist,
-            year=year)
+            lifeyear=lifeyear)
 
 #d18O data
-d18O <- d18O%>%
-  transmute(ID = ID,
+d18O_clean <- d18O%>%
+  filter(comment=="OK")%>%
+  transmute(fish_ID = fishID,
             age=age,
             capt = area,
             area = case_when(area %in% "Peene" ~ "Freshwater",
                              area %in% "Barthe" ~ "Freshwater",
                              area %in% "NHG" ~ "Freshwater",
                              area %in% "Sehrowbach" ~ "Freshwater",
-                             area %in% "Bandycksgraben" ~ "Freshwater",
+                             area %in% "Badendycksgraben" ~ "Freshwater",
                              area %in% "Ziese" ~ "Freshwater",
                              area %in% "KB" ~ "WRB",
                              area %in% "SB" ~ "WRB",
@@ -96,18 +98,18 @@ d18O <- d18O%>%
                              area %in% "BEG" ~ "NRB", 
                              area %in% "KJB" ~ "NRB",
                              area %in% "GJB" ~ "NRB",
-                             area %in% "GB" ~ "Marine",
+                             area %in% "GB" ~ "GB",
                              area %in% "KD" ~ "Control",
                              TRUE ~ "NA"),
             d18O = d18O,
             sims_dist = sims_dist,
-            year=year)
+            lifeyear=lifeyear)
 
-LA <- LA %>% drop_na()
+LA_clean <- LA_clean %>% drop_na()
 
 #Smooth trace element data to get rid of extreme values
-LA_smooth <- LA%>%group_by(ID)%>%
-  transmute(ID=ID,
+LA_smooth <- LA_clean%>%group_by(fish_ID)%>%
+  transmute(fish_ID=fish_ID,
             age=age,
             capt=capt,
             area=area,
@@ -117,57 +119,58 @@ LA_smooth <- LA%>%group_by(ID)%>%
             Ba=as.numeric(zoo::rollmean(Ba, k=9, fill=NA, align = "left")),
             Mn=as.numeric(zoo::rollmean(Mn, k=9, fill=NA, align = "left")),
             LA_dist=as.numeric(LA_dist),
-            year=year)
+            lifeyear=lifeyear)
 
 #Order data for joining
-d18O <- d18O[order(d18O$ID),]
-LA <- LA[order(LA$ID),]
-LA_smooth <- LA_smooth[order(LA_smooth$ID),]
+d18O_clean <- d18O_clean[order(d18O_clean$fish_ID),]
+LA_smooth <- LA_smooth[order(LA_smooth$fish_ID),]
 LA_smooth <- data.frame(LA_smooth)
 
 #reinterpolate Sr (higher spatial resolution) to d18O distances (lower spatial resolution) for joining
-IDOto <- unique(d18O$ID)
+IDOto <- unique(d18O_clean$fish_ID)
 dfE <- data.frame()
 for (i in 1:length(IDOto)) {
-  Sr <- data.frame(approx(LA_smooth[which(LA_smooth$ID==IDOto[i]),"LA_dist"],
-              LA_smooth[which(LA_smooth$ID==IDOto[i]),"Sr"],
-              n = length(d18O[which(d18O$ID==IDOto[i]),"sims_dist"]),
+  Sr <- data.frame(approx(LA_smooth[which(LA_smooth$fish_ID==IDOto[i]),"LA_dist"],
+              LA_smooth[which(LA_smooth$fish_ID==IDOto[i]),"Sr"],
+              n = length(d18O_clean[which(d18O_clean$fish_ID==IDOto[i]),"sims_dist"]),
               rule = 1, method = "linear", ties = "ordered"))
-  Na <- data.frame(approx(LA_smooth[which(LA_smooth$ID==IDOto[i]),"LA_dist"],
-              LA_smooth[which(LA_smooth$ID==IDOto[i]),"Na"],
-              n = length(d18O[which(d18O$ID==IDOto[i]),"sims_dist"]),
+  Na <- data.frame(approx(LA_smooth[which(LA_smooth$fish_ID==IDOto[i]),"LA_dist"],
+              LA_smooth[which(LA_smooth$fish_ID==IDOto[i]),"Na"],
+              n = length(d18O_clean[which(d18O_clean$fish_ID==IDOto[i]),"sims_dist"]),
               rule = 1, method = "linear", ties = "ordered"))
-  Mg <- data.frame(approx(LA_smooth[which(LA_smooth$ID==IDOto[i]),"LA_dist"],
-              LA_smooth[which(LA_smooth$ID==IDOto[i]),"Mg"],
-              n = length(d18O[which(d18O$ID==IDOto[i]),"sims_dist"]),
+  Mg <- data.frame(approx(LA_smooth[which(LA_smooth$fish_ID==IDOto[i]),"LA_dist"],
+              LA_smooth[which(LA_smooth$fish_ID==IDOto[i]),"Mg"],
+              n = length(d18O_clean[which(d18O_clean$fish_ID==IDOto[i]),"sims_dist"]),
               rule = 1, method = "linear", ties = "ordered"))
-  Ba <- data.frame(approx(LA_smooth[which(LA_smooth$ID==IDOto[i]),"LA_dist"],
-              LA_smooth[which(LA_smooth$ID==IDOto[i]),"Ba"],
-              n = length(d18O[which(d18O$ID==IDOto[i]),"sims_dist"]),
+  Ba <- data.frame(approx(LA_smooth[which(LA_smooth$fish_ID==IDOto[i]),"LA_dist"],
+              LA_smooth[which(LA_smooth$fish_ID==IDOto[i]),"Ba"],
+              n = length(d18O_clean[which(d18O_clean$fish_ID==IDOto[i]),"sims_dist"]),
               rule = 1, method = "linear", ties = "ordered"))
-  Mn <- data.frame(approx(LA_smooth[which(LA_smooth$ID==IDOto[i]),"LA_dist"],
-              LA_smooth[which(LA_smooth$ID==IDOto[i]),"Mn"],
-              n = length(d18O[which(d18O$ID==IDOto[i]),"sims_dist"]),
+  Mn <- data.frame(approx(LA_smooth[which(LA_smooth$fish_ID==IDOto[i]),"LA_dist"],
+              LA_smooth[which(LA_smooth$fish_ID==IDOto[i]),"Mn"],
+              n = length(d18O_clean[which(d18O_clean$fish_ID==IDOto[i]),"sims_dist"]),
               rule = 1, method = "linear", ties = "ordered"))
   df <- cbind(Sr=Sr[,2], Na=Na[,2], Mg=Mg[,2], Ba=Ba[,2], Mn=Mn[,2])
   dfE <- rbind(dfE,df)
 }
 
-otoint_lowres <- cbind(d18O, dfE)
+otoint_lowres <- cbind(d18O_clean, dfE)
+
+write.table(otoint_lowres, file = "Data/Pike/Oto_LA-to-d18O_interpolation.txt", row.names = F, sep = "\t",dec = ".")
 ```
 
 ```{r covariance d18O and Sr, include=FALSE, eval=FALSE}
 #read in data
 rm(list = ls())
 
-#otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt", 
+otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt", 
                             header = T, stringsAsFactors = F, 
                             dec = ".", sep = "\t")
 
 #clean up
 Oto_lowres <- otoint_lowres%>%
-  filter(ID!="BH-01908"&capt!="KD")%>%
-  transmute(ID=ID,
+  filter(fish_ID!="BH-01908"&capt!="KD")%>%
+  transmute(ID=fish_ID,
             capt=capt,
             area=area,
             dist=sims_dist,
@@ -250,21 +253,21 @@ dev.off()
 #read in data
 rm(list = ls())
 
-# otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt", 
-#                             header = T, stringsAsFactors = F, 
-#                             dec = ".", sep = "\t")
+otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt",
+                            header = T, stringsAsFactors = F,
+                            dec = ".", sep = "\t")
 
 #Get residuals from d18O ~ Sr
 subset_KD <- subset(otoint_lowres, capt=="KD")
 #subset_KD$res <- NA
-otoint_lowres <- otoint_lowres%>%drop_na()%>%filter(capt!="KD")%>%filter(ID!="BH-01908")
+oto_lowres <- otoint_lowres%>%drop_na()%>%filter(capt!="KD")
 
 #0-model
-lm0 <- lm(d18O~1, data = otoint_lowres)
+lm0 <- lm(d18O~1, data = oto_lowres)
 #normal model
-lm1 <- lm(d18O~Sr, data = otoint_lowres)
+lm1 <- lm(d18O~Sr, data = oto_lowres)
 #exponential decay
-lm2 <- lm(d18O~exp(-Sr), data = otoint_lowres)
+lm2 <- lm(d18O~exp(-Sr), data = oto_lowres)
 
 anova(lm0, lm1)
 anova(lm0, lm2)
@@ -272,46 +275,55 @@ anova(lm1, lm2)
 summary(lm1)
 
 
-otoint_lowres$res <- lm1$residuals
+oto_lowres$res <- lm1$residuals
 
 subset_KD$res <- scale(subset_KD$d18O)
 subset_KD <- subset_KD%>%drop_na()
 
-otoint_lowres <- rbind(otoint_lowres, subset_KD)
+oto_lowres <- rbind(oto_lowres, subset_KD)
 
 #check for pattern retention
-plot(otoint_lowres[otoint_lowres$ID=="BH-01889",]$sims_dist, otoint_lowres[otoint_lowres$ID=="BH-01889",]$res, type="l")
+plot(oto_lowres[oto_lowres$fish_ID=="BH-01906",]$sims_dist, oto_lowres[oto_lowres$fish_ID=="BH-01906",]$res, type="l")
+
+write.table(oto_lowres, "Data/Pike/Oto_LA-to-d18O_interpolation_with_res.txt", row.names = F, sep = "\t", dec = ".")
 ```
 
 ```{r average d18O residuals over years, include=FALSE, eval=FALSE}
+#read in data
+rm(list = ls())
+
+otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation_with_res.txt",
+                            header = T, stringsAsFactors = F,
+                            dec = ".", sep = "\t")
+
 #get d18O points per year to average over annual signal
-otoint_lowres$year <- as.factor(otoint_lowres$year)
+otoint_lowres$lifeyear <- as.factor(otoint_lowres$lifeyear)
 
-yearmean <- otoint_lowres%>%group_by(ID,year)%>%summarise(n=n())
+yearmean <- otoint_lowres%>%group_by(fish_ID,lifeyear)%>%summarise(n=n())
 mean(yearmean$n)
-#mean of 7.6 so smooth with 7 or 8
+#mean of 7.8 so smooth with 8
 
-otoint_lowres <- otoint_lowres%>%
-  group_by(ID)%>%
-  transmute(ID=ID,
+oto_lowres <- otoint_lowres%>%
+  group_by(fish_ID)%>%
+  transmute(ID=fish_ID,
             age=age,
             capt=capt,
             area=area,
-            d18O=zoo::rollmean(d18O, k=8, fill = NA, align = "left"),
-            res=zoo::rollmean(res, k=8, fill = NA, align = "left"),
+            d18O=zoo::rollmean(d18O, k=7, fill = NA, align = "left"),
+            res=zoo::rollmean(res, k=7, fill = NA, align = "left"),
             Sr=Sr,
             Na=Na,
             Mg=Mg,
             Ba=Ba,
             Mn=Mn,
-            year=year,
+            year=lifeyear,
             dist=sims_dist)
 
 #check for pattern smoothness
-plot(otoint_lowres[otoint_lowres$ID=="BH-01855",]$dist, otoint_lowres[otoint_lowres$ID=="BH-01855",]$d18O, type="l")
+plot(oto_lowres[oto_lowres$ID=="BH-01855",]$dist, oto_lowres[oto_lowres$ID=="BH-01855",]$d18O, type="l")
 
 #Save data
-write.table(otoint_lowres, "Data/Pike/Oto_LA-to-d18O_interpolation.txt", 
+write.table(oto_lowres, "Data/Pike/Oto_LA-to-d18O_interpolation_all_with_res.txt", 
             row.names = F,dec = ".", sep = "\t")
 ```
 
@@ -320,7 +332,7 @@ write.table(otoint_lowres, "Data/Pike/Oto_LA-to-d18O_interpolation.txt",
 #script to form annual means of elemental data for clustering and increment analysis
 rm(list = ls())
 #Read in data
-otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt", header = T,
+otoint_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation_all_with_res.txt", header = T,
                             stringsAsFactors = F, dec = ".", sep = "\t")
 
 otoint_lifehist <- otoint_lowres%>%
@@ -343,7 +355,7 @@ mypallette <- viridis::viridis(4, direction = 1)
 
 d18O <- ggplot(otoint_lifehist, aes(year, d18O_res))+
   geom_boxplot(aes(color = area), width = 0.5, outlier.size = .5)+
-  scale_x_discrete(limits = factor(1:10), breaks=c(1:10),
+  scale_x_discrete(limits = factor(1:10),
                    labels=c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"))+
   labs(x="Age (years)",
        y=expression(bold("Sr-corrected"~delta^18*"O"~("VPDB \u2030"))),
@@ -410,14 +422,170 @@ ggarrange(d18O, SrCa, ncol = 2, nrow = 1, labels = c("A", "B"), common.legend = 
 dev.off()
 ```
 
+```{r profile plots, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE, eval=FALSE}
+#script to calculate profile plots for d18O and Sr/Ca
+rm(list = ls())
+
+LA <- read.delim("Data/Pike/Pike-LA-ICPMS-years_whole-sample_with-TL.txt", 
+                 header = T, stringsAsFactors = F, sep = "\t", dec = ".")
+
+d18O <- read.delim("Data/Pike/Pike-d18O-years_whole-sample_with-TL.txt", header = T,
+                stringsAsFactors = F, sep = "\t", dec = ".")
+LA <- LA%>%
+  transmute(ID = fishID,
+            capt = area,
+            area = case_when(area %in% "Peene" ~ "Freshwater",
+                             area %in% "Barthe" ~ "Freshwater",
+                             area %in% "NHG" ~ "Freshwater",
+                             area %in% "Sehrowbach" ~ "Freshwater",
+                             area %in% "Badendycksgraben" ~ "Freshwater",
+                             area %in% "Ziese" ~ "Freshwater",
+                             area %in% "KB" ~ "Marine",
+                             area %in% "SB" ~ "Marine",
+                             area %in% "WB" ~ "Marine",
+                             area %in% "BEG" ~ "Marine", 
+                             area %in% "KJB" ~ "Marine",
+                             area %in% "GJB" ~ "Marine",
+                             area %in% "GB" ~ "Marine",
+                             area %in% "KD" ~ "control",
+                             TRUE ~ "NA"),
+            Sr = Sr,
+            Na = Na,
+            Mg = Mg,
+            Ba = Ba,
+            Mn = Mn,
+            LA_dist = LA_dist)
+
+d18O <- d18O%>%
+  transmute(ID = fishID,
+            capt = area,
+            area = case_when(area %in% "Peene" ~ "Freshwater",
+                             area %in% "Barthe" ~ "Freshwater",
+                             area %in% "NHG" ~ "Freshwater",
+                             area %in% "Sehrowbach" ~ "Freshwater",
+                             area %in% "Bandycksgraben" ~ "Freshwater",
+                             area %in% "Ziese" ~ "Freshwater",
+                             area %in% "KB" ~ "Marine",
+                             area %in% "SB" ~ "Marine",
+                             area %in% "WB" ~ "Marine",
+                             area %in% "BEG" ~ "Marine", 
+                             area %in% "KJB" ~ "Marine",
+                             area %in% "GJB" ~ "Marine",
+                             area %in% "GB" ~ "Marine",
+                             area %in% "KD" ~ "Freshwater",
+                             TRUE ~ "NA"),
+            d18O = d18O,
+            sims_dist = sims_dist)
+
+
+LA <- LA %>% drop_na()
+d18O <- d18O%>%drop_na()
+# Loop--------------------------------------------------------------------------
+
+mypallete <- viridis::viridis(4, direction = 1)
+
+IDOto <- unique(d18O$ID)
+
+for (i in 1:length(IDOto)) {
+  png(paste0("Data/Pike/Otoplots/", IDOto[i], ".png"), width = 1200)
+  par(mfrow=c(1,2))
+  plot(LA[which(LA$ID == IDOto[i]), "LA_dist",], 
+       LA[which(LA$ID == IDOto[i]), "Sr",], main = "", 
+       xlab =  "", ylab = "", 
+       xlim = c(0, max(LA[which(LA$ID == IDOto[i]), "LA_dist",], na.rm = T)),
+       ylim = c(0, max(LA$Sr, na.rm = T)),
+       col.axis = "black", type = "l", col = "orange", lwd = 4, 
+       fg = "black", axes = FALSE, pch = 19)
+  axis(1, pos = mean(LA[LA$area == "Freshwater",]$Sr, na.rm = T), 
+       at = c(0, max(LA[which(LA$ID == IDOto[i]), "LA_dist",], na.rm = T)-20,
+              max(LA$LA_dist)),
+       labels = c("", "Süßwasser", ""), lwd.ticks = 0, tck = 0, 
+       col = mypallete[3], lty = 1, lwd = 3, mgp = c(0,0.5,0), 
+       cex.axis=2, font = 2)
+  axis(1, pos = mean(LA[LA$area == "Freshwater",]$Sr, na.rm = T)+
+         sd(LA[LA$area == "Freshwater",]$Sr, na.rm = T), 
+       at = c(0, 1200, max(LA$LA_dist)),
+       labels = c("", "", ""), lwd.ticks = 0, tck = 0, 
+       col = mypallete[3], lty = 3, lwd = 3, mgp = c(0,0,0))
+  axis(1, pos = mean(LA[LA$area == "Freshwater",]$Sr, na.rm = T)-
+         sd(LA[LA$area == "Freshwater",]$Sr, na.rm = T), 
+       at = c(0, 1200, max(LA$LA_dist)),
+       labels = c("", "", ""), lwd.ticks = 0, tck = 0, 
+       col = mypallete[3], lty = 3, lwd = 3, mgp = c(0,0,0))
+  axis(1, pos = mean(LA[LA$area == "Marine",]$Sr, na.rm = T), 
+       at = c(0, max(LA[which(LA$ID == IDOto[i]), "LA_dist",], na.rm = T)-20,
+                   max(LA$LA_dist)),
+       labels = c("", "Brackwasser", ""), lwd.ticks = 0, tck = 0, 
+       col = mypallete[1], lty = 1, lwd = 3, mgp = c(0,0.5,0), 
+       cex.axis=2, font = 2)
+  axis(1, pos = mean(LA[LA$area == "Marine",]$Sr, na.rm = T)-
+         sd(LA[LA$area == "Marine",]$Sr, na.rm = T), 
+       at = c(0, 1200, max(LA$LA_dist)),
+       labels = c("", "", ""), lwd.ticks = 0, tck = 0, 
+       col = mypallete[1], lty = 3, lwd = 3, mgp = c(0,0,0))
+  axis(1, pos = mean(LA[LA$area == "Marine",]$Sr, na.rm = T)+
+         sd(LA[LA$area == "Marine",]$Sr, na.rm = T), 
+       at = c(0, 1200, max(LA$LA_dist)),
+       labels = c("", "", ""), lwd.ticks = 0, tck = 0, 
+       col = mypallete[1], lty = 3, lwd = 3, mgp = c(0,0,0))
+  axis(1, pos = 0, at = seq(0, max(LA$LA_dist), 500),
+       labels = seq(0, max(LA$LA_dist), 500), lwd.ticks = 5, tck = 0, 
+       col = "black", lty = 1, lwd = 2, mgp = c(0, 0.5, 0),
+       cex.axis=2, font = 2)
+  axis(2, pos = 0, tcl = 0.2,
+       at = seq(round(min(LA$Sr),3), 
+                round(max(LA$Sr),3), 0.001), 
+       labels = seq(round(min(LA$Sr)*1000,0), 
+                    round(max(LA$Sr)*1000,0), 1),
+       las = 2, mgp = c(0, 0.5, 0), cex.axis = 2, font = 2, 
+       lwd = 2, col = "black", col.axis = "black")
+  title(ylab = list("Sr/Ca Verhältnis", cex = 2, font=2),
+        xlab = list("Distanz vom Kern [um]", cex = 2, font=2), 
+        col.lab = "black", line = 1)
+  text(x = 300, y = 0.008, labels = paste(IDOto[i], "-", 
+                                         LA[which(LA$ID == IDOto[i]), "capt",]), 
+       cex=3, font=2)
+
+  plot(d18O[which(d18O$ID == IDOto[i]), "sims_dist",],
+       d18O[which(d18O$ID == IDOto[i]), "d18O",], main = "",
+       xlab =  "", ylab = "",
+       xlim = c(0, max(d18O[which(d18O$ID == IDOto[i]), "sims_dist",], na.rm = T)),
+       ylim = c(min(d18O$d18O, na.rm = T), 0),
+       col.axis = "black", cex.axis = 1, type = "b", col = "blue", lwd = 3,
+       fg = "black", cex = 1, axes = FALSE, pch = 19)
+  axis(1, pos = mean(d18O[which(d18O$ID == IDOto[i]), "d18O",], na.rm = T),
+       at = c(0, 200, max(d18O[which(d18O$ID == IDOto[i]), "sims_dist",], na.rm = T)),
+       labels = c("", "indiv.mean", ""), lwd.ticks = 0, tck = 0,
+       col = "black", lty = 3, lwd = 1, mgp = c(0,0,0))
+  axis(1, pos = mean(d18O$d18O, na.rm = T),
+       at = c(0, 200, max(d18O$sims_dist)),
+       labels = c("", "global mean", ""), lwd.ticks = 0, tck = 0,
+       col = "black", lty = 1, lwd = 1, mgp = c(0,0,0))
+  axis(1, pos = round(min(d18O$d18O), 1), at = seq(0, max(d18O$sims_dist), 500),
+       labels = seq(0, max(d18O$sims_dist), 500), lwd.ticks = 5, tck = 0,
+       col = "black", lty = 1, lwd = 2, mgp = c(0, 0.5, 0))
+  axis(2, pos = 0, tcl = 0.2,
+       at = seq(round(min(d18O$d18O, na.rm = T),1),
+                round(max(d18O$d18O, na.rm = T),1), 1),
+       labels = seq(round(min(d18O$d18O, na.rm = T),1),
+                    round(max(d18O$d18O, na.rm = T),1), 1),
+       las = 2, mgp = c(0, 0.5, 0), cex.axis = 1,
+       lwd = 2, col = "black", col.axis = "black")
+  title(ylab = "d18O", cex.lab = 1,
+        col.lab = "black", line = 5)
+  title(xlab = "Distance [um]", cex.lab = 1,
+        col.lab = "black", line = 1)
+  title(main = "d18O")
+  text(x = 300, y = 0, labels = d18O[which(d18O$ID == IDOto[i]), "capt",])
+  dev.off()  
+}
+```
+
 ## Model-based preclustering
 ```{r preclustering prep, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE, eval=FALSE}
 rm(list = ls())
 #read in data
-# oto_highres <- read.delim("Data/Otoliths/Oto_d18O-to-LA_interpolation.txt",
-#                          header = T, dec = ".", sep = "\t",
-#                          stringsAsFactors = F)
-oto_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt",
+oto_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation_all_with_res.txt",
                          header = T, dec = ".", sep = "\t",
                          stringsAsFactors = F)
 
@@ -428,7 +596,7 @@ Elemeans <- oto_lowres%>%
   summarise(ID=ID,
             area=case_when(area=="WRB"~"Lagoon",
                            area=="NRB"~"Lagoon",
-                           area=="Marine"~"Lagoon",
+                           area=="GB"~"Lagoon",
                            area=="Freshwater"~"Tributary",
                            area=="Control"~"Control lake"),
             Sr=mean(Sr),
@@ -475,7 +643,7 @@ plot(fit, what = "density")
 summary(fit, parameters=T)
 
 #Cluster again with best method
-fit2 <- Mclust(Elemeans[,c(3,8)], G=3, modelNames = "VII")
+fit2 <- Mclust(Elemeans[,c(3,8)], G=3, modelNames = "VEE")
 
 #Assign cluster to data
 Elemeans$clust <- as.factor(fit2$classification)
@@ -538,7 +706,7 @@ oto_clusters <- oto_lowres%>%
 Fgroup <- subset(oto_clusters, clust==1)
 Bgroup <- subset(oto_clusters, clust==2)
 
-#Test length, needs to equal N=86
+#Test length, needs to equal N=120
 length(unique(Bgroup$ID))+length(unique(Fgroup$ID))
 
 #Function to reinterpolate an element to a specified length
@@ -986,28 +1154,24 @@ rm(list = ls())
 #read in data
 load("Data/Pike/Adults_element_transects.RData")
 
-#Filter out vaterite fish
-Bgroup1 <- Bgroup%>%filter(ID!="BH-01908")
-Fgroup1 <- Fgroup
-
 #Look for sample size
-length(unique(Bgroup1$ID))
-length(unique(Fgroup1$ID))
+length(unique(Bgroup$ID))
+length(unique(Fgroup$ID))
 
 #Mean transect length
-summary(count(Bgroup1, "ID")) #Median length 39 data points
-summary(count(Fgroup1, "ID")) #Median length 39 data points
+summary(count(Bgroup, "ID")) #Median length 34 data points
+summary(count(Fgroup, "ID")) #Median length 38 data points
 
 #Make year a factor
-Bgroup1$year <- as.factor(Bgroup1$year)
-Fgroup1$year <- as.factor(Fgroup1$year)
+Bgroup$year <- as.factor(Bgroup$year)
+Fgroup$year <- as.factor(Fgroup$year)
 
-#reinterpolate to standard length (40, based on both medians)
-dataB1 <- interpol(series = Bgroup1, length = 35, element = "Sr")
-dataB2 <- interpol(series = Bgroup1, length = 35, element = "d18O_res")
+#reinterpolate to standard length (based on both medians)
+dataB1 <- interpol(series = Bgroup, length = 35, element = "Sr")
+dataB2 <- interpol(series = Bgroup, length = 35, element = "d18O_res")
 
-dataF1 <- interpol(series = Fgroup1, length = 40, element = "Sr")
-dataF2 <- interpol(series = Fgroup1, length = 40, element = "d18O_res")
+dataF1 <- interpol(series = Fgroup, length = 40, element = "Sr")
+dataF2 <- interpol(series = Fgroup, length = 40, element = "d18O_res")
 
 dataB <- cbind(dataB1, dataB2[,2])
 dataF <- cbind(dataF1, dataF2[,2])
@@ -1015,10 +1179,23 @@ dataF <- cbind(dataF1, dataF2[,2])
 dataB[,2] <- scale(dataB[,2])
 dataF[,2] <- scale(dataF[,2])
 
-colnames(dataB) <- c("ID", "Sr", "d18O_res")
-colnames(dataF) <- c("ID", "Sr", "d18O_res")
+#extract data if no interpolation wanted
+dataBS <- Bgroup[,c(1,7)]
+dataFS <- Fgroup[,c(1,7)]
 
-#make list of matrices for DTW
+dataBO <- Bgroup[,c(1,6)]
+dataFO <- Fgroup[,c(1,6)]
+
+dataBS[,2] <- scale(dataBS[,2])
+dataFS[,2] <- scale(dataFS[,2])
+
+colnames(dataBS) <- c("ID", "Sr")
+colnames(dataFS) <- c("ID", "Sr")
+
+colnames(dataBO) <- c("ID", "d18Ores")
+colnames(dataFO) <- c("ID", "d18Ores")
+
+#Lists for hierarchical clusters
 IDOto <- unique(dataB$ID)
 Bseries <- list()
 
@@ -1039,77 +1216,128 @@ for (i in 1:length(IDOto)) {
 
 names(Fseries) <- c(IDOto)
 
+#make list of matrices for DTW Sr/Ca (partitional)
+IDOto <- unique(dataBS$ID)
+Bseries_Sr <- list()
+
+for (i in 1:length(IDOto)) {
+  m <- as.matrix(dataBS[which(dataBS$ID==IDOto[i]),c(2)])
+  Bseries_Sr[[length(Bseries_Sr)+1]] <- m
+}
+
+names(Bseries_Sr) <- c(IDOto)
+
+IDOto <- unique(dataFS$ID)
+Fseries_Sr <- list()
+
+for (i in 1:length(IDOto)) {
+  m <- as.matrix(dataFS[which(dataFS$ID==IDOto[i]),c(2)])
+  Fseries_Sr[[length(Fseries_Sr)+1]] <- m
+}
+
+names(Fseries_Sr) <- c(IDOto)
+
+#make list of matrices for DTW d18O (partitional)
+IDOto <- unique(dataBO$ID)
+Bseries_d18O <- list()
+
+for (i in 1:length(IDOto)) {
+  m <- as.matrix(dataBO[which(dataBO$ID==IDOto[i]),c(2)])
+  Bseries_d18O[[length(Bseries_d18O)+1]] <- m
+}
+
+names(Bseries_d18O) <- c(IDOto)
+
+IDOto <- unique(dataFO$ID)
+Fseries_d18O <- list()
+
+for (i in 1:length(IDOto)) {
+  m <- as.matrix(dataFO[which(dataFO$ID==IDOto[i]),c(2)])
+  Fseries_d18O[[length(Fseries_d18O)+1]] <- m
+}
+
+names(Fseries_d18O) <- c(IDOto)
+
+#hierarchical data series
 save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol,
-     file = "Data/Pike/Adults_element_transects_prep.RData")
+     file = "Data/Pike/Adults_element_transects_hierarchical-prep.RData")
+
+#partitonal data series
+save(Fgroup,Bgroup,dataBS, dataFS, dataBO, dataFO, Bseries_Sr, Fseries_Sr, Bseries_d18O, Fseries_d18O, interpol,
+     file = "Data/Pike/Adults_element_transects_partitional-prep.RData")
 ```
 
-```{r DTW clustering all, include=FALSE, eval=FALSE}
-load("Data/Pike/Adults_element_transects_prep.RData")
+```{r Hierarchical dtw clustering with even lengths, include=FALSE, eval=FALSE}
+rm(list = ls())
+
+#load hierarchical data prep
+load("Data/Pike/Adults_element_transects_hierarchical-prep.RData")
 
 #cluster Bodden with cutoff test
 clust_B <- tsclust(series = Bseries, type = "hierarchical",
                   k = 2L:6L,centroid = dba,
                   control = hierarchical_control(method = "ward.D"),
-                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
+                  seed = 5L,args = tsclust_args(dist = list(window.size =5L)))
 
 names(clust_B) <- paste0("k_",2L:6L)
 
-sapply(clust_B, cvi, type = "internal")
+EvalB <- data.frame(sapply(clust_B, cvi, type = "internal"))
+EvalB$win <- c("max", "max","max","min","min","max","min")
 
 #cluster FW with cutoff test
 clust_F <- tsclust(series = Fseries, type = "hierarchical",
                   k = 2L:6L,centroid = dba,
                   control = hierarchical_control(method = "ward.D"),
-                  seed = 96L,args = tsclust_args(dist = list(window.size =5L)))
+                  seed = 101L,args = tsclust_args(dist = list(window.size =5L)))
 
 names(clust_F) <- paste0("k_",2L:6L)
 
-sapply(clust_F, cvi, type = "internal")
+EvalF <- data.frame(sapply(clust_B, cvi, type = "internal"))
+EvalF$win <- c("max", "max","max","min","min","max","min")
 
-jpeg(filename = "Figures/Life-history-dendrograms_FW.jpg", 
-    width = 6000, height = 3000, res = 600)
-plot(clust_F$k_3,type = "dendrogram", lwd=2)
-dev.off()
 #Plot best solution lagoons
-# png(filename = "C:/Users/timor/Nextcloud2/Timo/BODDENHECHT/Chapter 2/Stats/Niche analysis/Figures/Year_3_Sr_d18O_centroids.jpg", width = 2400, height = 800)
-plot(clust_B$k_3, type="dendrogram", lwd=2)+
-  theme(axis.text = element_text(size = 25, color="black"),
-        axis.title = element_text(size = 25),
-        plot.title = element_text(size = 25, hjust = 0.5))
-#dev.off()
-
-#Plot best solution Freshwater
-plot(clust_F$k_3, type="centroid", linetype="solid", cex=2)+
-  ylim(-2.5,2)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
+Lagoonplot <- plot(clust_B$k_4, type="sc", lwd=2)+
+  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
   labs(x="transect cell", y="scaled value")+
   theme(axis.text = element_text(size = 25, color="black"),
         axis.title = element_text(size = 25),
         plot.title = element_text(size = 25, hjust = 0.5))
 
-save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol, clust_B, clust_F,
-     file = "Data/Pike/Adults_element_transects_all.RData")
+#Plot best solution Freshwater
+FWplot <- plot(clust_F$k_3, type="sc", linetype="solid", cex=2)+
+  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
+  labs(x="transect cell", y="scaled value")+
+  theme(axis.text = element_text(size = 25, color="black"),
+        axis.title = element_text(size = 25),
+        plot.title = element_text(size = 25, hjust = 0.5))
+
+save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol, clust_B, clust_F, Lagoonplot, FWplot,
+     file = "Data/Pike/Adults_element_transects_hierarchical_all.RData")
 ```
 
-```{r cluster assignment all, include=FALSE, eval=FALSE}
+```{r cluster assignment hierarchical, include=FALSE, eval=FALSE}
 rm(list=ls())
-load("Data/Pike/Adults_element_transects_all.RData")
+load("Data/Pike/Adults_element_transects_hierarchical_all.RData")
 #assign clusters to fish
+Lagoonplot
+
 fishassign_B2 <- data.frame(ID=names(Bseries), 
-                            clust2=factor(clust_B$k_3@cluster, 
-                                           levels = c(1:3), 
-                                           labels = c("Int saline|cold",
-                                                      "Low saline|cold",
-                                                      "High saline|warm")))
+                            clust2=factor(clust_B$k_4@cluster, 
+                                           levels = c(1:4), 
+                                           labels = c("BW Med saline|cold",
+                                                      "BW Low saline|shift",
+                                                      "BW High saline|const",
+                                                      "BW low saline|cold")))
+
+FWplot
 
 fishassign_F2 <- data.frame(ID=names(Fseries), 
                             clust2=factor(clust_F$k_3@cluster, 
                                            levels = c(1:3), 
-                                           labels = c("FW low saline|shift",
+                                           labels = c("FW med saline|shift",
                                                       "FW low saline|cold",
                                                       "FW high saline|shift")))
 #Join dtw clusters with pike data
-Bgroup$area <- ifelse(Bgroup$area=="Marine", "GB", Bgroup$area)
-
 fishassign_B <- Bgroup%>%
   group_by(ID)%>%
   transmute(ID=ID,
@@ -1121,10 +1349,11 @@ fishassign_B <- Bgroup%>%
                                 area=="Freshwater"~4))%>%
   distinct()%>%
   inner_join(fishassign_B2, by="ID")%>%
-  mutate(clust2=fct_relevel(clust2,
-                            "Low saline|cold",
-                            "Int saline|cold",
-                            "High saline|warm"))
+  mutate(clust=fct_relevel(clust2,
+                            "BW Low saline|shift",
+                            "BW low saline|cold",
+                            "BW Med saline|cold",
+                            "BW High saline|const"))
 
 fishassign_F <- Fgroup%>%
   group_by(ID)%>%
@@ -1134,8 +1363,8 @@ fishassign_F <- Fgroup%>%
   distinct()%>%
   inner_join(fishassign_F2, by="ID")%>%
   mutate(clust2=fct_relevel(clust2,
+                            "FW med saline|shift",
                             "FW low saline|cold",
-                            "FW low saline|shift",
                             "FW high saline|shift"))
 
 #Fetch 3-year clusters
@@ -1168,37 +1397,252 @@ write.table(fishassign_F, "Data/Pike/Fcluster_all.txt", row.names = F, sep = "\t
             dec = ".")
 
 save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol, clust_B, clust_F,
-     fishassign_B2, fishassign_F2,
+     fishassign_B, fishassign_F,
      file = "Data/Pike/Adults_element_transects_all.RData")
 ```
 
-```{r plot Bodden proportions all, eval=FALSE}
-mypallette <- viridis::viridis(3, direction = -1)
+```{r Partitional dtw clustering Sr, include=FALSE, eval=FALSE}
+load("Data/Pike/Adults_element_transects_partitional-prep.RData")
+
+#cluster Bodden with cutoff test
+clust_B <- tsclust(series = Bseries, type = "partitional",
+                  k = 2L:6L,centroid = "dba",
+                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
+
+names(clust_B) <- paste0("k_",2L:6L)
+
+sapply(clust_B, cvi, type = "internal")
+
+EvalB <- data.frame(sapply(clust_B, cvi, type = "internal"))
+EvalB$win <- c("warning", "max","max","min","min","warning","warning")
+
+#cluster FW with cutoff test
+clust_F <- tsclust(series = Fseries, type = "partitional",
+                  k = 2L:6L,centroid = "dba",
+                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
+
+names(clust_F) <- paste0("k_",2L:6L)
+
+EvalF <- data.frame(sapply(clust_F, cvi, type = "internal"))
+EvalF$win <- c("warning", "max","max","min","min","warning","warning")
+
+#plot best solution lagoon
+Lagoonplot <- plot(clust_B$k_2, type="sc", lwd=2)+
+  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
+  labs(x="transect cell", y="scaled value")+
+  theme(axis.text = element_text(size = 25, color="black"),
+        axis.title = element_text(size = 25),
+        plot.title = element_text(size = 25, hjust = 0.5))
+
+#Plot best solution Freshwater
+FWplot <- plot(clust_F$k_2, type="sc", linetype="solid", cex=2)+
+  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
+  labs(x="transect cell", y="scaled value")+
+  theme(axis.text = element_text(size = 25, color="black"),
+        axis.title = element_text(size = 25),
+        plot.title = element_text(size = 25, hjust = 0.5))
+
+save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol, clust_B, clust_F, Lagoonplot, FWplot,
+     file = "Data/Pike/Adults_element_partitional-clusters.RData")
+```
+
+```{r Partitional dtw clustering d18O, include=FALSE, eval=FALSE}
+rm(list = ls())
+
+load("Data/Pike/Adults_element_transects_partitional-prep.RData")
+
+#cluster Bodden with cutoff test
+clust_B <- tsclust(series = Bseries_d18O, type = "partitional",
+                  k = 2L:6L,centroid = "dba",
+                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
+
+names(clust_B) <- paste0("k_",2L:6L)
+
+sapply(clust_B, cvi, type = "internal")
+
+EvalB <- data.frame(sapply(clust_B, cvi, type = "internal"))
+EvalB$win <- c("warning", "max","max","min","min","warning","warning")
+
+#cluster FW with cutoff test
+clust_F <- tsclust(series = Fseries_d18O, type = "partitional",
+                  k = 2L:6L,centroid = "dba",
+                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
+
+names(clust_F) <- paste0("k_",2L:6L)
+
+EvalF <- data.frame(sapply(clust_F, cvi, type = "internal"))
+EvalF$win <- c("warning", "max","max","min","min","warning","warning")
+
+#plot best solution lagoon
+Lagoonplot_d18O <- plot(clust_B$k_2, type="sc", lwd=2)+
+  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
+  labs(x="transect cell", y="scaled value")+
+  theme(axis.text = element_text(size = 25, color="black"),
+        axis.title = element_text(size = 25),
+        plot.title = element_text(size = 25, hjust = 0.5))
+
+#Plot best solution Freshwater
+FWplot_d18O <- plot(clust_F$k_2, type="sc", linetype="solid", cex=2)+
+  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
+  labs(x="transect cell", y="scaled value")+
+  theme(axis.text = element_text(size = 25, color="black"),
+        axis.title = element_text(size = 25),
+        plot.title = element_text(size = 25, hjust = 0.5))
+
+save(Fgroup,Bgroup,dataBO, dataFO, Bseries_d18O, Fseries_d18O, interpol, clust_B, clust_F, Lagoonplot_d18O, FWplot_d18O,
+     file = "Data/Pike/Adults_element_partitional-d18O-clusters.RData")
+```
+
+```{r Salinity cluster assignment partitional, include=FALSE, eval=FALSE}
+rm(list=ls())
+load("Data/Pike/Adults_element_partitional-Sr-clusters.RData")
+
+#Lagoon sample
+#Look at clusters
+Lagoonplot
+
+#assign clusters to fish
+fishassign_B <- data.frame(ID=names(Bseries), 
+                            clust=factor(clust_B$k_2@cluster, 
+                                           levels = c(1:2), 
+                                           labels = c("BW low saline",
+                                                      "BW high saline")))
+
+
+#FW sample
+#Look at clusters
+FWplot
+
+fishassign_F2 <- data.frame(ID=names(Fseries), 
+                            clust=factor(clust_F$k_2@cluster, 
+                                           levels = c(1:2), 
+                                           labels = c("FW high saline",
+                                                      "FW low saline")))
+#Join dtw clusters with pike data
+Bgroup$area <- ifelse(Bgroup$area=="Marine", "GB", Bgroup$area)
+
+fishassign_B <- Bgroup%>%
+  group_by(ID)%>%
+  transmute(ID=ID,
+            capt=capt,
+            area=as.factor(area),
+            areaorder=case_when(area=="WRB"~1,
+                                area=="NRB"~2,
+                                area=="GB"~3,
+                                area=="Freshwater"~4))%>%
+  distinct()%>%
+  inner_join(fishassign_B, by="ID")%>%
+  mutate(clust=fct_relevel(clust,
+                            "BW low saline",
+                            "BW high saline"))
+
+fishassign_F <- Fgroup%>%
+  group_by(ID)%>%
+  transmute(ID=ID,
+            capt=capt,
+            area=area)%>%
+  distinct()%>%
+  inner_join(fishassign_F2, by="ID")%>%
+  mutate(clust=fct_relevel(clust,
+                            "FW low saline",
+                            "FW high saline"))
+
+
+write.table(fishassign_B, "Data/Pike/Bcluster_saline_all.txt", row.names = F, sep = "\t",
+            dec = ".")
+write.table(fishassign_F, "Data/Pike/Fcluster_saline_all.txt", row.names = F, sep = "\t",
+            dec = ".")
+```
+
+```{r Thermal cluster assignment partitional, include=FALSE, eval=FALSE}
+rm(list=ls())
+load("Data/Pike/Adults_element_partitional-d18O-clusters.RData")
+
+#Lagoon sample
+#Look at clusters
+Lagoonplot_d18O
+
+#assign clusters to fish
+fishassign_B <- data.frame(ID=names(Bseries_d18O), 
+                            clust=factor(clust_B$k_2@cluster, 
+                                           levels = c(1:2), 
+                                           labels = c("BW cold",
+                                                      "BW warm")))
+
+
+#FW sample
+#Look at clusters
+FWplot_d18O
+
+fishassign_F2 <- data.frame(ID=names(Fseries_d18O), 
+                            clust=factor(clust_F$k_2@cluster, 
+                                           levels = c(1:2), 
+                                           labels = c("FW cold",
+                                                      "FW shift")))
+#Join dtw clusters with pike data
+Bgroup$area <- ifelse(Bgroup$area=="Marine", "GB", Bgroup$area)
+
+fishassign_B <- Bgroup%>%
+  group_by(ID)%>%
+  transmute(ID=ID,
+            capt=capt,
+            area=as.factor(area),
+            areaorder=case_when(area=="WRB"~1,
+                                area=="NRB"~2,
+                                area=="GB"~3,
+                                area=="Freshwater"~4))%>%
+  distinct()%>%
+  inner_join(fishassign_B, by="ID")%>%
+  mutate(clust=fct_relevel(clust,
+                            "BW cold",
+                            "BW warm"))
+
+fishassign_F <- Fgroup%>%
+  group_by(ID)%>%
+  transmute(ID=ID,
+            capt=capt,
+            area=area)%>%
+  distinct()%>%
+  inner_join(fishassign_F2, by="ID")%>%
+  mutate(clust=fct_relevel(clust,
+                            "FW cold",
+                            "FW shift"))
+
+
+write.table(fishassign_B, "Data/Pike/Bcluster_saline_all.txt", row.names = F, sep = "\t",
+            dec = ".")
+write.table(fishassign_F, "Data/Pike/Fcluster_saline_all.txt", row.names = F, sep = "\t",
+            dec = ".")
+```
+
+```{r plot Bodden proportions Saline, eval=FALSE}
+mypallette <- viridis::viridis(4, direction = -1)
 
 #Plot Bodden proportions
 
 #png(filename = "C:/Users/timor/Nextcloud2/Timo/BODDENHECHT/Chapter 2/Stats/Niche analysis/Figures/Clusterassign.jpg", width = 2400, height = 800)
-ggplot(fishassign_B, aes(reorder(area, areaorder), fill=clust2))+
+ggplot(fishassign_B, aes(reorder(area, areaorder), fill=clust))+
   geom_bar(position = "fill", width = .5)+theme_minimal()+
   labs(x="", y="proportion", fill="assigned cluster")+
-  scale_fill_manual(breaks=c("Low saline|cold",
-                             "Int saline|cold",
-                             "High saline|warm"), 
+  scale_fill_manual(breaks=c("BW Low saline|shift",
+                             "BW low saline|cold",
+                             "BW Med saline|cold",
+                             "BW High saline|const"), 
                     values = mypallette)+
-  theme(axis.text.y = element_text(size = 25, color = "black"),
-        axis.text.x = element_text(size = 25, color = "black"),
-        axis.title = element_text(size = 25),
-        legend.text = element_text(size = 25),
-        legend.title = element_text(size = 25),
+  theme(axis.text.y = element_text(size = 15, color = "black"),
+        axis.text.x = element_text(size = 15, color = "black"),
+        axis.title = element_text(size = 15),
+        legend.text = element_text(size = 15),
+        legend.title = element_text(size = 15),
         legend.position = "top")
 #dev.off()
 
 #Plot FW proportions
-ggplot(fishassign_F, aes(area, fill=clust2))+
+ggplot(fishassign_F, aes(capt, fill=clust))+
   geom_bar(position = "fill", width = .5)+theme_minimal()+
   labs(x="", y="proportion", fill="assigned cluster")+
-  scale_fill_manual(breaks=c("FW low saline|cold",
-                             "FW high saline|warm"), 
+  scale_fill_manual(breaks=c("FW low saline",
+                             "FW high saline"), 
                     values = mypallette)+
   theme(axis.text.y = element_text(size = 25, color = "black"),
         axis.text.x = element_text(size = 25, color = "black"),
@@ -1243,10 +1687,11 @@ save_as_docx(Propstable, path = "Tables/Proportions_Ecotypes.docx")
 ```
 
 ```{r dtw graphics lagoon, include=FALSE, eval=FALSE}
+rm(list=ls())
 load("Data/Pike/Adults_element_transects_all.RData")
 
-Bgroup.clus <- Bgroup%>%inner_join(fishassign_B2, by="ID")
-Fgroup.clus <- Fgroup%>%inner_join(fishassign_F2, by="ID")
+Bgroup.clus <- Bgroup%>%inner_join(fishassign_B, by="ID")
+Fgroup.clus <- Fgroup%>%inner_join(fishassign_F, by="ID")
 
 Groupall <- rbind(Bgroup.clus, Fgroup.clus)
 
@@ -1260,7 +1705,7 @@ agebreaks.label <- as.character(seq(1,11,1))
 
 mypallette <- viridis::viridis(6, direction = 1)
 
-A <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="High saline|warm",])+
+A <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW High saline|const",])+
   geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[1], 
               alpha=1, size=.3, method = "gam")+
@@ -1278,11 +1723,11 @@ A <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="High saline|warm",])+
         axis.ticks.x = element_line(colour = "transparent"),
         axis.title.y = element_text(size = 8, margin = margin(r=10)))+
   coord_cartesian(clip = "off")+
-  annotation_custom(grob = text_grob(label = "FW high S, thermal shift (N=9)",
+  annotation_custom(grob = text_grob(label = "High S, thermal const (N=24)",
                                      face = "bold", size = 8),
                     ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
 
-B <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Int saline|cold",])+
+B <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Med saline|cold",])+
   geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[2], 
               alpha=1, size=.3, method = "gam")+
@@ -1302,11 +1747,11 @@ B <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Int saline|cold",])+
         axis.text.x = element_text(color = "white"),
         axis.ticks.x = element_line(colour = "transparent"))+
   coord_cartesian(clip = "off")+
-  annotation_custom(grob = text_grob(label = "Int. S, thermal cold (N=15)",
+  annotation_custom(grob = text_grob(label = "Int. S, thermal low (N=23)",
                                      face = "bold", size = 8),
                     ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
 
-C <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Low saline|cold",])+
+C <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Low saline|shift"|Bgroup.clus$clust2=="BW Low saline|cold",])+
   geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[3], 
               alpha=1, size=.3, method = "gam")+
@@ -1326,11 +1771,11 @@ C <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Low saline|cold",])+
         axis.text.x = element_text(color = "white"),
         axis.ticks.x = element_line(colour = "transparent"))+
   coord_cartesian(clip = "off")+
-  annotation_custom(grob = text_grob(label = "Low S, thermal shift (N=19)",
+  annotation_custom(grob = text_grob(label = "Low S, thermal shift (N=39)",
                                      face = "bold", size = 8),
                     ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
 
-A1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="High saline|warm",])+
+A1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW High saline|const",])+
   geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[1], 
               alpha=1, size=.3, method = "gam")+
@@ -1365,7 +1810,7 @@ A1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="High saline|warm",])+
                                      ymin=0, ymax=-2,
                                      xmin=-325, xmax=-325)
 
-B1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Int saline|cold",])+
+B1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Med saline|cold",])+
   geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[2], 
               alpha=1, size=.3, method = "gam")+
@@ -1385,7 +1830,7 @@ B1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Int saline|cold",])+
         axis.text.x = element_text(color = "black", face = "bold", size = 8))+
   coord_cartesian(clip = "off")
 
-C1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="Low saline|cold",])+
+C1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Low saline|shift"|Bgroup.clus$clust2=="BW Low saline|cold",])+
   geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[3], 
               alpha=1, size=.3, method = "gam")+
@@ -1447,7 +1892,7 @@ D <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|shift",])+
         axis.text.x = element_text(color = "white"),
         axis.ticks.x = element_line(colour = "transparent"))+
   coord_cartesian(clip = "off")+
-  annotation_custom(grob = text_grob(label = "FW high S, thermal shift (N=9)",
+  annotation_custom(grob = text_grob(label = "FW high S, thermal shift (N=24)",
                                      face = "bold", size = 8),
                     ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
 
@@ -1476,7 +1921,7 @@ E <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|cold",])+
                     ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
 
 
-F1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|shift",])+
+F1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW med saline|shift",])+
   geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[6], 
               alpha=1, size=.3, method = "gam")+
@@ -1496,7 +1941,7 @@ F1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|shift",])+
         axis.text.x = element_text(color = "white"),
         axis.ticks.x = element_line(colour = "transparent"))+
   coord_cartesian(clip = "off")+
-  annotation_custom(grob = text_grob(label = "FW resident, thermal shift (N=4)",
+  annotation_custom(grob = text_grob(label = "FW resident, thermal shift (N=6)",
                                      face = "bold", size = 8),
                     ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
 
@@ -1557,7 +2002,7 @@ E1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|cold",])+
         axis.text.x = element_text(color = "black", face = "bold",size = 8))+
   coord_cartesian(clip = "off")
 
-F2 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|shift",])+
+F2 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW med saline|shift",])+
   geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[6], 
               alpha=1, size=.3, method = "gam")+
@@ -1582,7 +2027,7 @@ Plot <- ggarrange(D,E,F1,D1,E1,F2,
           widths = c(1,1,1),
           heights = c(1.5,1.5),
           align = "v",
-          labels = c("d","e","f"),
+          labels = c("a","b","c"),
           label.x = .1,
           label.y = 1.03)
 
