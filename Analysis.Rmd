@@ -2116,6 +2116,33 @@ plot(Disp)
 adonis2(elements~Series2$clust, method = "euclidean", permutations = 9999, na.rm=T)
 ```
 
+```{r jackknife reclassification 3 year olds, eval=FALSE}
+set.seed(128)
+
+Series3 <- na.omit(Series2)
+
+Series3 <- Series3%>%
+  mutate(clust=case_when(clust=="FW low saline|cold"~"FW_resident",
+                            clust=="FW low saline|shift"~"FW_resident",
+                            clust=="FW int saline|const"~"Anadromous",
+                            clust=="FW int saline|shift"~"Anadromous",
+                            clust=="FW high saline|shift"~"Anadromous",
+                            clust=="FW high saline|const"~"Trans-habitat",
+                            clust=="BW Low saline|shift"~"Trans-habitat",
+                            clust=="BW int saline|cold"~"BW-resident",
+                            clust=="BW high saline|cold"~"BW-resident",
+                            clust=="BW high saline|warm"~"BW-resident"))
+
+#jackknife reclassification
+lda.m2 <- lda(clust~Sr_orig+Sr_juv+Sr_adult+d18O_res_orig+d18O_res_juv+d18O_res_adult, 
+              data = Series3, CV=TRUE)
+
+Series3$jacknife <- lda.m2$class
+summary <- Series3 %>% summarise(clust=clust,
+                      jackknife=jacknife,
+                      lda.error=mean(clust != jacknife))
+```
+
 ## Setup and cleanup of data for mixed models
 ```{r LUNG cleanup for GLMM, include=FALSE, eval=FALSE}
 # Script to read in and clean up LUNG data tables

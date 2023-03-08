@@ -53,7 +53,7 @@ transformed parameters {
 
   // ecotype-level
   vector <lower=0> [n_eco] LInf_eco; //Mean maximum adult size at ecotype level
-  vector <lower=0.2> [n_eco] k_eco;    //Growth completion parameter at ecotype level
+  vector <lower=0> [n_eco] k_eco;    //Growth completion parameter at ecotype level
   vector <upper=0> [n_eco] tZero_eco;//Age at wich size = 0 at ecotype level
   
   // fish-level
