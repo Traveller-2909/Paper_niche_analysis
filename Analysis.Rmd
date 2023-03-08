@@ -703,8 +703,8 @@ oto_clusters <- oto_lowres%>%
             dist=dist)
 
 #subset according to cluster
-Fgroup <- subset(oto_clusters, clust==1)
-Bgroup <- subset(oto_clusters, clust==2)
+Fgroup <- subset(oto_clusters, area=="Freshwater")
+Bgroup <- oto_clusters%>%filter(area=="WRB"|area=="NRB"|area=="GB")
 
 #Test length, needs to equal N=120
 length(unique(Bgroup$ID))+length(unique(Fgroup$ID))
@@ -1032,12 +1032,6 @@ rm(list = ls())
 #read in data
 load("Data/Pike/Adults_element_transects.RData")
 
-fishassign_B <- read.delim("Data/Pike/Bodden_clusters_3-year.txt", header = T,
-                           stringsAsFactors = F, sep = "\t",dec=".")
-
-fishassign_F <- read.delim("Data/Pike/FW_clusters_3-year.txt", header = T,
-                           stringsAsFactors = F, sep = "\t",dec=".")
-
 #transform data to all positive
 dataB$d18O_res <- (dataB$d18O_res+sqrt((min(dataB$d18O_res))^2))
 #So a value of d18O res is now to be interpreted as residual from predicted
@@ -1180,8 +1174,8 @@ dataB[,2] <- scale(dataB[,2])
 dataF[,2] <- scale(dataF[,2])
 
 #extract data if no interpolation wanted
-dataBS <- Bgroup[,c(1,7)]
-dataFS <- Fgroup[,c(1,7)]
+dataBS <- Bgroup[,c(1,7,6)]
+dataFS <- Fgroup[,c(1,7,6)]
 
 dataBO <- Bgroup[,c(1,6)]
 dataFO <- Fgroup[,c(1,6)]
@@ -1189,8 +1183,8 @@ dataFO <- Fgroup[,c(1,6)]
 dataBS[,2] <- scale(dataBS[,2])
 dataFS[,2] <- scale(dataFS[,2])
 
-colnames(dataBS) <- c("ID", "Sr")
-colnames(dataFS) <- c("ID", "Sr")
+colnames(dataBS) <- c("ID", "Sr", "d18O")
+colnames(dataFS) <- c("ID", "Sr", "d18O")
 
 colnames(dataBO) <- c("ID", "d18Ores")
 colnames(dataFO) <- c("ID", "d18Ores")
@@ -1221,7 +1215,7 @@ IDOto <- unique(dataBS$ID)
 Bseries_Sr <- list()
 
 for (i in 1:length(IDOto)) {
-  m <- as.matrix(dataBS[which(dataBS$ID==IDOto[i]),c(2)])
+  m <- as.matrix(dataBS[which(dataBS$ID==IDOto[i]),c(2,3)])
   Bseries_Sr[[length(Bseries_Sr)+1]] <- m
 }
 
@@ -1231,7 +1225,7 @@ IDOto <- unique(dataFS$ID)
 Fseries_Sr <- list()
 
 for (i in 1:length(IDOto)) {
-  m <- as.matrix(dataFS[which(dataFS$ID==IDOto[i]),c(2)])
+  m <- as.matrix(dataFS[which(dataFS$ID==IDOto[i]),c(2,3)])
   Fseries_Sr[[length(Fseries_Sr)+1]] <- m
 }
 
@@ -1304,7 +1298,7 @@ Lagoonplot <- plot(clust_B$k_4, type="sc", lwd=2)+
         plot.title = element_text(size = 25, hjust = 0.5))
 
 #Plot best solution Freshwater
-FWplot <- plot(clust_F$k_3, type="sc", linetype="solid", cex=2)+
+FWplot <- plot(clust_F$k_6, type="sc", linetype="solid", cex=2)+
   ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
   labs(x="transect cell", y="scaled value")+
   theme(axis.text = element_text(size = 25, color="black"),
@@ -1324,19 +1318,22 @@ Lagoonplot
 fishassign_B2 <- data.frame(ID=names(Bseries), 
                             clust2=factor(clust_B$k_4@cluster, 
                                            levels = c(1:4), 
-                                           labels = c("BW Med saline|cold",
+                                           labels = c("BW int saline|cold",
                                                       "BW Low saline|shift",
-                                                      "BW High saline|const",
-                                                      "BW low saline|cold")))
+                                                      "BW high saline|warm",
+                                                      "BW high saline|cold")))
 
 FWplot
 
 fishassign_F2 <- data.frame(ID=names(Fseries), 
-                            clust2=factor(clust_F$k_3@cluster, 
-                                           levels = c(1:3), 
-                                           labels = c("FW med saline|shift",
+                            clust2=factor(clust_F$k_6@cluster, 
+                                           levels = c(1:6), 
+                                           labels = c("FW low saline|shift",
                                                       "FW low saline|cold",
-                                                      "FW high saline|shift")))
+                                                      "FW int saline|const",
+                                                      "FW high saline|shift",
+                                                      "FW int saline|shift",
+                                                      "FW high saline|const")))
 #Join dtw clusters with pike data
 fishassign_B <- Bgroup%>%
   group_by(ID)%>%
@@ -1350,10 +1347,10 @@ fishassign_B <- Bgroup%>%
   distinct()%>%
   inner_join(fishassign_B2, by="ID")%>%
   mutate(clust=fct_relevel(clust2,
-                            "BW Low saline|shift",
-                            "BW low saline|cold",
-                            "BW Med saline|cold",
-                            "BW High saline|const"))
+                           "BW Low saline|shift",
+                           "BW int saline|cold",
+                           "BW high saline|warm",
+                           "BW high saline|cold"))
 
 fishassign_F <- Fgroup%>%
   group_by(ID)%>%
@@ -1363,33 +1360,36 @@ fishassign_F <- Fgroup%>%
   distinct()%>%
   inner_join(fishassign_F2, by="ID")%>%
   mutate(clust2=fct_relevel(clust2,
-                            "FW med saline|shift",
                             "FW low saline|cold",
+                            "FW low saline|shift",
+                            "FW int saline|const",
+                            "FW int saline|shift",
+                            "FW high saline|const",
                             "FW high saline|shift"))
 
 #Fetch 3-year clusters
-fishassign_F_3yr <- read.delim("Data/Pike/FW_clusters_3-year.txt", header = T,
-                               stringsAsFactors = F, dec = ".", sep = "\t")
-
-fishassign_B_3yr <- read.delim("Data/Pike/Bodden_clusters_3-year.txt", header = T,
-                               stringsAsFactors = F, dec = ".", sep = "\t")
+# fishassign_F_3yr <- read.delim("Data/Pike/FW_clusters_3-year.txt", header = T,
+#                                stringsAsFactors = F, dec = ".", sep = "\t")
+# 
+# fishassign_B_3yr <- read.delim("Data/Pike/Bodden_clusters_3-year.txt", header = T,
+#                                stringsAsFactors = F, dec = ".", sep = "\t")
 
 #join with all data to test cluster retention
-fishassign_testB <- fishassign_B%>%left_join(fishassign_B_3yr, by="ID")%>%
-  drop_na()%>%
-  transmute(ID=ID,
-            clust_all=clust2.x,
-            clust_3=clust2.y,
-            correct.assign=case_when(clust_all==clust_3~1,
-                                     clust_all!=clust_3~0))
-
-fishassign_testF <- fishassign_F%>%left_join(fishassign_F_3yr, by="ID")%>%
-  drop_na()%>%
-  transmute(ID=ID,
-            clust_all=clust2.x,
-            clust_3=clust2.y,
-            correct.assign=case_when(clust_all==clust_3~1,
-                                     clust_all!=clust_3~0))
+# fishassign_testB <- fishassign_B%>%left_join(fishassign_B_3yr, by="ID")%>%
+#   drop_na()%>%
+#   transmute(ID=ID,
+#             clust_all=clust2.x,
+#             clust_3=clust2.y,
+#             correct.assign=case_when(clust_all==clust_3~1,
+#                                      clust_all!=clust_3~0))
+# 
+# fishassign_testF <- fishassign_F%>%left_join(fishassign_F_3yr, by="ID")%>%
+#   drop_na()%>%
+#   transmute(ID=ID,
+#             clust_all=clust2.x,
+#             clust_3=clust2.y,
+#             correct.assign=case_when(clust_all==clust_3~1,
+#                                      clust_all!=clust_3~0))
 
 write.table(fishassign_B, "Data/Pike/Bcluster_all.txt", row.names = F, sep = "\t",
             dec = ".")
@@ -1397,222 +1397,8 @@ write.table(fishassign_F, "Data/Pike/Fcluster_all.txt", row.names = F, sep = "\t
             dec = ".")
 
 save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol, clust_B, clust_F,
-     fishassign_B, fishassign_F,
-     file = "Data/Pike/Adults_element_transects_all.RData")
-```
-
-```{r Partitional dtw clustering Sr, include=FALSE, eval=FALSE}
-load("Data/Pike/Adults_element_transects_partitional-prep.RData")
-
-#cluster Bodden with cutoff test
-clust_B <- tsclust(series = Bseries, type = "partitional",
-                  k = 2L:6L,centroid = "dba",
-                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
-
-names(clust_B) <- paste0("k_",2L:6L)
-
-sapply(clust_B, cvi, type = "internal")
-
-EvalB <- data.frame(sapply(clust_B, cvi, type = "internal"))
-EvalB$win <- c("warning", "max","max","min","min","warning","warning")
-
-#cluster FW with cutoff test
-clust_F <- tsclust(series = Fseries, type = "partitional",
-                  k = 2L:6L,centroid = "dba",
-                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
-
-names(clust_F) <- paste0("k_",2L:6L)
-
-EvalF <- data.frame(sapply(clust_F, cvi, type = "internal"))
-EvalF$win <- c("warning", "max","max","min","min","warning","warning")
-
-#plot best solution lagoon
-Lagoonplot <- plot(clust_B$k_2, type="sc", lwd=2)+
-  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
-  labs(x="transect cell", y="scaled value")+
-  theme(axis.text = element_text(size = 25, color="black"),
-        axis.title = element_text(size = 25),
-        plot.title = element_text(size = 25, hjust = 0.5))
-
-#Plot best solution Freshwater
-FWplot <- plot(clust_F$k_2, type="sc", linetype="solid", cex=2)+
-  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
-  labs(x="transect cell", y="scaled value")+
-  theme(axis.text = element_text(size = 25, color="black"),
-        axis.title = element_text(size = 25),
-        plot.title = element_text(size = 25, hjust = 0.5))
-
-save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol, clust_B, clust_F, Lagoonplot, FWplot,
-     file = "Data/Pike/Adults_element_partitional-clusters.RData")
-```
-
-```{r Partitional dtw clustering d18O, include=FALSE, eval=FALSE}
-rm(list = ls())
-
-load("Data/Pike/Adults_element_transects_partitional-prep.RData")
-
-#cluster Bodden with cutoff test
-clust_B <- tsclust(series = Bseries_d18O, type = "partitional",
-                  k = 2L:6L,centroid = "dba",
-                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
-
-names(clust_B) <- paste0("k_",2L:6L)
-
-sapply(clust_B, cvi, type = "internal")
-
-EvalB <- data.frame(sapply(clust_B, cvi, type = "internal"))
-EvalB$win <- c("warning", "max","max","min","min","warning","warning")
-
-#cluster FW with cutoff test
-clust_F <- tsclust(series = Fseries_d18O, type = "partitional",
-                  k = 2L:6L,centroid = "dba",
-                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
-
-names(clust_F) <- paste0("k_",2L:6L)
-
-EvalF <- data.frame(sapply(clust_F, cvi, type = "internal"))
-EvalF$win <- c("warning", "max","max","min","min","warning","warning")
-
-#plot best solution lagoon
-Lagoonplot_d18O <- plot(clust_B$k_2, type="sc", lwd=2)+
-  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
-  labs(x="transect cell", y="scaled value")+
-  theme(axis.text = element_text(size = 25, color="black"),
-        axis.title = element_text(size = 25),
-        plot.title = element_text(size = 25, hjust = 0.5))
-
-#Plot best solution Freshwater
-FWplot_d18O <- plot(clust_F$k_2, type="sc", linetype="solid", cex=2)+
-  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
-  labs(x="transect cell", y="scaled value")+
-  theme(axis.text = element_text(size = 25, color="black"),
-        axis.title = element_text(size = 25),
-        plot.title = element_text(size = 25, hjust = 0.5))
-
-save(Fgroup,Bgroup,dataBO, dataFO, Bseries_d18O, Fseries_d18O, interpol, clust_B, clust_F, Lagoonplot_d18O, FWplot_d18O,
-     file = "Data/Pike/Adults_element_partitional-d18O-clusters.RData")
-```
-
-```{r Salinity cluster assignment partitional, include=FALSE, eval=FALSE}
-rm(list=ls())
-load("Data/Pike/Adults_element_partitional-Sr-clusters.RData")
-
-#Lagoon sample
-#Look at clusters
-Lagoonplot
-
-#assign clusters to fish
-fishassign_B <- data.frame(ID=names(Bseries), 
-                            clust=factor(clust_B$k_2@cluster, 
-                                           levels = c(1:2), 
-                                           labels = c("BW low saline",
-                                                      "BW high saline")))
-
-
-#FW sample
-#Look at clusters
-FWplot
-
-fishassign_F2 <- data.frame(ID=names(Fseries), 
-                            clust=factor(clust_F$k_2@cluster, 
-                                           levels = c(1:2), 
-                                           labels = c("FW high saline",
-                                                      "FW low saline")))
-#Join dtw clusters with pike data
-Bgroup$area <- ifelse(Bgroup$area=="Marine", "GB", Bgroup$area)
-
-fishassign_B <- Bgroup%>%
-  group_by(ID)%>%
-  transmute(ID=ID,
-            capt=capt,
-            area=as.factor(area),
-            areaorder=case_when(area=="WRB"~1,
-                                area=="NRB"~2,
-                                area=="GB"~3,
-                                area=="Freshwater"~4))%>%
-  distinct()%>%
-  inner_join(fishassign_B, by="ID")%>%
-  mutate(clust=fct_relevel(clust,
-                            "BW low saline",
-                            "BW high saline"))
-
-fishassign_F <- Fgroup%>%
-  group_by(ID)%>%
-  transmute(ID=ID,
-            capt=capt,
-            area=area)%>%
-  distinct()%>%
-  inner_join(fishassign_F2, by="ID")%>%
-  mutate(clust=fct_relevel(clust,
-                            "FW low saline",
-                            "FW high saline"))
-
-
-write.table(fishassign_B, "Data/Pike/Bcluster_saline_all.txt", row.names = F, sep = "\t",
-            dec = ".")
-write.table(fishassign_F, "Data/Pike/Fcluster_saline_all.txt", row.names = F, sep = "\t",
-            dec = ".")
-```
-
-```{r Thermal cluster assignment partitional, include=FALSE, eval=FALSE}
-rm(list=ls())
-load("Data/Pike/Adults_element_partitional-d18O-clusters.RData")
-
-#Lagoon sample
-#Look at clusters
-Lagoonplot_d18O
-
-#assign clusters to fish
-fishassign_B <- data.frame(ID=names(Bseries_d18O), 
-                            clust=factor(clust_B$k_2@cluster, 
-                                           levels = c(1:2), 
-                                           labels = c("BW cold",
-                                                      "BW warm")))
-
-
-#FW sample
-#Look at clusters
-FWplot_d18O
-
-fishassign_F2 <- data.frame(ID=names(Fseries_d18O), 
-                            clust=factor(clust_F$k_2@cluster, 
-                                           levels = c(1:2), 
-                                           labels = c("FW cold",
-                                                      "FW shift")))
-#Join dtw clusters with pike data
-Bgroup$area <- ifelse(Bgroup$area=="Marine", "GB", Bgroup$area)
-
-fishassign_B <- Bgroup%>%
-  group_by(ID)%>%
-  transmute(ID=ID,
-            capt=capt,
-            area=as.factor(area),
-            areaorder=case_when(area=="WRB"~1,
-                                area=="NRB"~2,
-                                area=="GB"~3,
-                                area=="Freshwater"~4))%>%
-  distinct()%>%
-  inner_join(fishassign_B, by="ID")%>%
-  mutate(clust=fct_relevel(clust,
-                            "BW cold",
-                            "BW warm"))
-
-fishassign_F <- Fgroup%>%
-  group_by(ID)%>%
-  transmute(ID=ID,
-            capt=capt,
-            area=area)%>%
-  distinct()%>%
-  inner_join(fishassign_F2, by="ID")%>%
-  mutate(clust=fct_relevel(clust,
-                            "FW cold",
-                            "FW shift"))
-
-
-write.table(fishassign_B, "Data/Pike/Bcluster_saline_all.txt", row.names = F, sep = "\t",
-            dec = ".")
-write.table(fishassign_F, "Data/Pike/Fcluster_saline_all.txt", row.names = F, sep = "\t",
-            dec = ".")
+     fishassign_B, fishassign_F, Lagoonplot, FWplot,
+     file = "Data/Pike/Adults_element_transects_hierarchical_all.RData")
 ```
 
 ```{r plot Bodden proportions Saline, eval=FALSE}
@@ -1625,9 +1411,9 @@ ggplot(fishassign_B, aes(reorder(area, areaorder), fill=clust))+
   geom_bar(position = "fill", width = .5)+theme_minimal()+
   labs(x="", y="proportion", fill="assigned cluster")+
   scale_fill_manual(breaks=c("BW Low saline|shift",
-                             "BW low saline|cold",
-                             "BW Med saline|cold",
-                             "BW High saline|const"), 
+                             "BW int saline|cold",
+                             "BW high saline|warm",
+                             "BW high saline|cold"), 
                     values = mypallette)+
   theme(axis.text.y = element_text(size = 15, color = "black"),
         axis.text.x = element_text(size = 15, color = "black"),
@@ -1637,12 +1423,17 @@ ggplot(fishassign_B, aes(reorder(area, areaorder), fill=clust))+
         legend.position = "top")
 #dev.off()
 
+mypallette <- viridis::viridis(6, direction = -1)
 #Plot FW proportions
-ggplot(fishassign_F, aes(capt, fill=clust))+
+ggplot(fishassign_F, aes(capt, fill=clust2))+
   geom_bar(position = "fill", width = .5)+theme_minimal()+
   labs(x="", y="proportion", fill="assigned cluster")+
-  scale_fill_manual(breaks=c("FW low saline",
-                             "FW high saline"), 
+  scale_fill_manual(breaks=c("FW low saline|cold",
+                            "FW low saline|shift",
+                            "FW int saline|const",
+                            "FW int saline|shift",
+                            "FW high saline|const",
+                            "FW high saline|shift"), 
                     values = mypallette)+
   theme(axis.text.y = element_text(size = 25, color = "black"),
         axis.text.x = element_text(size = 25, color = "black"),
@@ -1688,7 +1479,9 @@ save_as_docx(Propstable, path = "Tables/Proportions_Ecotypes.docx")
 
 ```{r dtw graphics lagoon, include=FALSE, eval=FALSE}
 rm(list=ls())
-load("Data/Pike/Adults_element_transects_all.RData")
+load("Data/Pike/Adults_element_transects_hierarchical_all.RData")
+
+Lagoonplot
 
 Bgroup.clus <- Bgroup%>%inner_join(fishassign_B, by="ID")
 Fgroup.clus <- Fgroup%>%inner_join(fishassign_F, by="ID")
@@ -1703,15 +1496,15 @@ agebreaks <- Groupall%>%group_by(ID, year)%>%
 agebreaks.num <- unique(agebreaks$mean.yeardist)
 agebreaks.label <- as.character(seq(1,11,1))
 
-mypallette <- viridis::viridis(6, direction = 1)
+mypallette <- viridis::viridis(10, direction = 1)
 
-A <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW High saline|const",])+
+A <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW high saline|warm",])+
   geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[1], 
               alpha=1, size=.3, method = "gam")+
-  scale_color_viridis_d()+
   theme_classic()+
-  ylim(0, 7.5)+
+  ylim(0, 8)+
+  scale_y_continuous(breaks = seq(0,8,1), limits = c(0,8))+
   xlim(0,2100)+
   labs(x="", y=expression(bold("Sr/Ca (mg/g)")))+
   theme(legend.position = "none", 
@@ -1723,17 +1516,18 @@ A <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW High saline|const",])+
         axis.ticks.x = element_line(colour = "transparent"),
         axis.title.y = element_text(size = 8, margin = margin(r=10)))+
   coord_cartesian(clip = "off")+
-  annotation_custom(grob = text_grob(label = "High S, thermal const (N=24)",
+  annotation_custom(grob = text_grob(label = "High S, thermal warm (N=22)",
                                      face = "bold", size = 8),
-                    ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
+                    ymin = 9, ymax = 9, xmin = 1050, xmax = 1050)
 
-B <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Med saline|cold",])+
+B <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW high saline|cold",])+
   geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[2], 
               alpha=1, size=.3, method = "gam")+
   scale_color_viridis_d()+
   theme_classic()+
-  ylim(0, 7.5)+
+  ylim(0, 8)+
+  scale_y_continuous(breaks = seq(0,8,1), limits = c(0,8))+
   xlim(0,2100)+
   labs(x="")+
   theme(legend.position = "none",
@@ -1747,17 +1541,18 @@ B <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Med saline|cold",])+
         axis.text.x = element_text(color = "white"),
         axis.ticks.x = element_line(colour = "transparent"))+
   coord_cartesian(clip = "off")+
-  annotation_custom(grob = text_grob(label = "Int. S, thermal low (N=23)",
+  annotation_custom(grob = text_grob(label = "High S, thermal const (N=7)",
                                      face = "bold", size = 8),
-                    ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
+                    ymin = 9, ymax = 9, xmin = 1050, xmax = 1050)
 
-C <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Low saline|shift"|Bgroup.clus$clust2=="BW Low saline|cold",])+
+C <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW int saline|cold"|Bgroup.clus$clust2=="BW int saline|cold",])+
   geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[3], 
               alpha=1, size=.3, method = "gam")+
   scale_color_viridis_d()+
   theme_classic()+
-  ylim(0, 7.5)+
+  ylim(0, 8)+
+  scale_y_continuous(breaks = seq(0,8,1), limits = c(0,8))+
   xlim(0,2100)+
   labs(x="")+
   theme(legend.position = "none",
@@ -1771,11 +1566,36 @@ C <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Low saline|shift"|Bgroup.clus$cl
         axis.text.x = element_text(color = "white"),
         axis.ticks.x = element_line(colour = "transparent"))+
   coord_cartesian(clip = "off")+
-  annotation_custom(grob = text_grob(label = "Low S, thermal shift (N=39)",
+  annotation_custom(grob = text_grob(label = "Int S, thermal cold (N=17)",
                                      face = "bold", size = 8),
-                    ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
+                    ymin = 9, ymax = 9, xmin = 1050, xmax = 1050)
 
-A1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW High saline|const",])+
+D <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Low saline|shift"|Bgroup.clus$clust2=="BW low saline|shift",])+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[4], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(0, 8)+
+  scale_y_continuous(breaks = seq(0,8,1), limits = c(0,8))+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(15,1,-27.5,-5)),
+        axis.text.x = element_text(color = "white"),
+        axis.ticks.x = element_line(colour = "transparent"))+
+  coord_cartesian(clip = "off")+
+  annotation_custom(grob = text_grob(label = "Low S, thermal shift (N=20)",
+                                     face = "bold", size = 8),
+                    ymin = 9, ymax = 9, xmin = 1050, xmax = 1050) 
+
+A1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW high saline|warm",])+
   geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[1], 
               alpha=1, size=.3, method = "gam")+
@@ -1783,13 +1603,12 @@ A1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW High saline|const",])+
   theme_classic()+
   ylim(-3, 3)+
   xlim(0,2100)+
-  labs(x="", 
-       y=expression(bold("scaled"~delta^18*"O"~("VPDB \u2030"))))+
+  labs(x="",  y=expression(bold("scaled"~delta^18*"O"~("VPDB \u2030"))))+
   theme(legend.position = "none",
         panel.grid.major.y = element_line(),
         panel.border = element_rect(fill = NA, size = 1),
         plot.margin = margin(c(1,1,-15,1)),
-        axis.text.x = element_text(color = "black", face = "bold", size = 8),
+        axis.text.x = element_text(color = "black", face = "bold", size = 6),
         axis.text.y = element_text(color = "black", face = "bold", size = 8),
         axis.title.y = element_text(size = 8, margin = margin(r=10)))+
   coord_cartesian(clip = "off")+
@@ -1810,7 +1629,7 @@ A1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW High saline|const",])+
                                      ymin=0, ymax=-2,
                                      xmin=-325, xmax=-325)
 
-B1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Med saline|cold",])+
+B1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW high saline|cold",])+
   geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[2], 
               alpha=1, size=.3, method = "gam")+
@@ -1830,7 +1649,7 @@ B1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Med saline|cold",])+
         axis.text.x = element_text(color = "black", face = "bold", size = 8))+
   coord_cartesian(clip = "off")
 
-C1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Low saline|shift"|Bgroup.clus$clust2=="BW Low saline|cold",])+
+C1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW int saline|cold"|Bgroup.clus$clust2=="BW Low saline|cold",])+
   geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[3], 
               alpha=1, size=.3, method = "gam")+
@@ -1850,16 +1669,36 @@ C1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Low saline|shift"|Bgroup.clus$c
         axis.text.x = element_text(color = "black", face = "bold", size = 8))+
   coord_cartesian(clip = "off")
 
-Plot <- ggarrange(A,B,C,A1,B1,C1, 
-          nrow = 2, ncol = 3, 
+D1 <-ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW low saline|shift"|Bgroup.clus$clust2=="BW Low saline|shift",])+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[3], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(-3,3)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(1,1,-15,1)),
+        axis.text.x = element_text(color = "black", face = "bold", size = 8))+
+  coord_cartesian(clip = "off")
+
+Plot <- ggarrange(A,B,C,D,A1,B1,C1,D1, 
+          nrow = 2, ncol = 4, 
           widths = c(1,1,1),
           heights = c(1.5,1.5),
           align = "v",
-          labels = c("a","b","c"),
+          labels = c("A","B","C","D"),
           label.x = .1,
           label.y = 1.03)
 
-png(filename = "Figures/Life-history-plots-lagoon.png", 
+png(filename = "Figures/Life-history-plots-lagoon_revised.png", 
     width = 5000, height = 2000, res = 600)
 annotate_figure(Plot,
                 bottom = text_grob(expression(bold("Distance from core"~(mu*"m"))),
@@ -1872,13 +1711,14 @@ dev.off()
 ```
 
 ```{r dtw graphics FW, include=FALSE, eval=FALSE}
-D <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|shift",])+
+A <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|cold",])+
   geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
-  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[4], 
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[5], 
               alpha=1, size=.3, method = "gam")+
   scale_color_viridis_d()+
   theme_classic()+
-  ylim(0, 7.5)+
+  ylim(0, 8)+
+  scale_y_continuous(breaks = seq(0,8,1), limits = c(0,8))+
   xlim(0,2100)+
   labs(x="", y=expression(bold("Sr/Ca (mg/g)")))+
   theme(legend.position = "none",
@@ -1892,42 +1732,18 @@ D <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|shift",])+
         axis.text.x = element_text(color = "white"),
         axis.ticks.x = element_line(colour = "transparent"))+
   coord_cartesian(clip = "off")+
-  annotation_custom(grob = text_grob(label = "FW high S, thermal shift (N=24)",
-                                     face = "bold", size = 8),
-                    ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
+  annotation_custom(grob = text_grob(label = "FW low S, thermal cold (N=4)",
+                                     face = "bold", size = 4),
+                    ymin = 9, ymax = 9, xmin = 1050, xmax = 1050)
 
-E <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|cold",])+
-  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
-  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[5], 
-              alpha=1, size=.3, method = "gam")+
-  scale_color_viridis_d()+
-  theme_classic()+
-  ylim(0, 7.5)+
-  xlim(0,2100)+
-  labs(x="")+
-  theme(legend.position = "none",
-        panel.grid.major.y = element_line(),
-        axis.line.y = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        axis.title.y = element_blank(),
-        panel.border = element_rect(fill = NA, size = 1),
-        plot.margin = margin(c(15,1,-27.5,-5)),
-        axis.text.x = element_text(color = "white"),
-        axis.ticks.x = element_line(colour = "transparent"))+
-  coord_cartesian(clip = "off")+
-  annotation_custom(grob = text_grob(label = "FW resident, thermal cold (N=4)",
-                                     face = "bold", size = 8),
-                    ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
-
-
-F1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW med saline|shift",])+
+B <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|shift",])+
   geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[6], 
               alpha=1, size=.3, method = "gam")+
   scale_color_viridis_d()+
   theme_classic()+
-  ylim(0, 7.5)+
+  ylim(0, 8)+
+  scale_y_continuous(breaks = seq(0,8,1), limits = c(0,8))+
   xlim(0,2100)+
   labs(x="")+
   theme(legend.position = "none",
@@ -1941,13 +1757,114 @@ F1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW med saline|shift",])+
         axis.text.x = element_text(color = "white"),
         axis.ticks.x = element_line(colour = "transparent"))+
   coord_cartesian(clip = "off")+
-  annotation_custom(grob = text_grob(label = "FW resident, thermal shift (N=6)",
-                                     face = "bold", size = 8),
-                    ymin = 8.5, ymax = 8.5, xmin = 1050, xmax = 1050)
+  annotation_custom(grob = text_grob(label = "FW low S, thermal shift (N=9)",
+                                     face = "bold", size = 4),
+                    ymin = 9, ymax = 9, xmin = 1050, xmax = 1050)
 
-D1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|shift",])+
+
+C <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW int saline|const",])+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[7], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(0, 8)+
+  scale_y_continuous(breaks = seq(0,8,1), limits = c(0,8))+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(15,1,-27.5,-5)),
+        axis.text.x = element_text(color = "white"),
+        axis.ticks.x = element_line(colour = "transparent"))+
+  coord_cartesian(clip = "off")+
+  annotation_custom(grob = text_grob(label = "FW int S, thermal const (N=14)",
+                                     face = "bold", size = 4),
+                    ymin = 9, ymax = 9, xmin = 1050, xmax = 1050)
+
+D <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW int saline|shift",])+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[8], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(0, 8)+
+  scale_y_continuous(breaks = seq(0,8,1), limits = c(0,8))+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(15,1,-27.5,-5)),
+        axis.text.x = element_text(color = "white"),
+        axis.ticks.x = element_line(colour = "transparent"))+
+  coord_cartesian(clip = "off")+
+  annotation_custom(grob = text_grob(label = "FW int S, thermal shift (N=7)",
+                                     face = "bold", size = 4),
+                    ymin = 9, ymax = 9, xmin = 1050, xmax = 1050)
+
+E <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|shift",])+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[9], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(0, 8)+
+  scale_y_continuous(breaks = seq(0,8,1), limits = c(0,8))+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(15,1,-27.5,-5)),
+        axis.text.x = element_text(color = "white"),
+        axis.ticks.x = element_line(colour = "transparent"))+
+  coord_cartesian(clip = "off")+
+  annotation_custom(grob = text_grob(label = "FW high S, thermal shift (N=9)",
+                                     face = "bold", size = 4),
+                    ymin = 9, ymax = 9, xmin = 1050, xmax = 1050)
+
+F <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|const",])+
+  geom_line(aes(dist, Sr*1000, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, Sr*1000), color="black", fill=mypallette[10], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(0, 8)+
+  scale_y_continuous(breaks = seq(0,8,1), limits = c(0,8))+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(15,1,-27.5,-5)),
+        axis.text.x = element_text(color = "white"),
+        axis.ticks.x = element_line(colour = "transparent"))+
+  coord_cartesian(clip = "off")+
+  annotation_custom(grob = text_grob(label = "FW high S, thermal const (N=11)",
+                                     face = "bold", size = 4),
+                    ymin = 9, ymax = 9, xmin = 1050, xmax = 1050)
+
+A1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|cold",])+
   geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
-  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[4], 
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[5], 
               alpha=1, size=.3, method = "gam")+
   scale_color_viridis_d()+
   theme_classic()+
@@ -1963,14 +1880,14 @@ D1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|shift",])+
         axis.title.y = element_text(size = 8, margin = margin(r=10)),
         panel.border = element_rect(fill = NA, size = 1),
         plot.margin = margin(c(1,1,-15,1)),
-        axis.text.x = element_text(color = "black", face = "bold", size = 8))+
+        axis.text.x = element_text(color = "black", face = "bold", size = 6))+
   coord_cartesian(clip = "off")+
   geom_segment(x=-330, y=0, xend=-330, yend=3, 
                lineend = "butt", linejoin = "mitre",
                size=2, arrow = arrow(length = unit(0.18, "inches")),
                color="#66CCCC")+
   annotation_custom(grob = text_grob(label = "cold", 
-                                     rot = 90, face = "bold", size = 8),
+                                     rot = 90, face = "bold", size = 6),
                                      ymin=0, ymax=2,
                                      xmin=-335, xmax=-335)+
   geom_segment(x=-330, y=0, xend=-330, yend=-3, 
@@ -1978,31 +1895,11 @@ D1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|shift",])+
                size=2, arrow = arrow(length = unit(0.18, "inches")),
                color="#FF6666")+
   annotation_custom(grob = text_grob(label = "warm", 
-                                     rot = -90, face = "bold", size = 8),
+                                     rot = -90, face = "bold", size = 6),
                                      ymin=0, ymax=-2,
                                      xmin=-325, xmax=-325)
 
-E1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|cold",])+
-  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
-  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[5], 
-              alpha=1, size=.3, method = "gam")+
-  scale_color_viridis_d()+
-  theme_classic()+
-  ylim(-3,3)+
-  xlim(0,2100)+
-  labs(x="")+
-  theme(legend.position = "none",
-        panel.grid.major.y = element_line(),
-        axis.line.y = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        axis.title.y = element_blank(),
-        panel.border = element_rect(fill = NA, size = 1),
-        plot.margin = margin(c(1,1,-15,1)),
-        axis.text.x = element_text(color = "black", face = "bold",size = 8))+
-  coord_cartesian(clip = "off")
-
-F2 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW med saline|shift",])+
+B1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|shift",])+
   geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
   geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[6], 
               alpha=1, size=.3, method = "gam")+
@@ -2019,19 +1916,99 @@ F2 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW med saline|shift",])+
         axis.title.y = element_blank(),
         panel.border = element_rect(fill = NA, size = 1),
         plot.margin = margin(c(1,1,-15,1)),
-        axis.text.x = element_text(color = "black", face = "bold",size = 8))+
+        axis.text.x = element_text(color = "black", face = "bold",size = 6))+
   coord_cartesian(clip = "off")
 
-Plot <- ggarrange(D,E,F1,D1,E1,F2, 
-          nrow = 2, ncol = 3, 
-          widths = c(1,1,1),
+C1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW int saline|const",])+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[7], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(-3,3)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(1,1,-15,1)),
+        axis.text.x = element_text(color = "black", face = "bold",size = 6))+
+  coord_cartesian(clip = "off")
+
+D1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW int saline|shift",])+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[8], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(-3,3)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(1,1,-15,1)),
+        axis.text.x = element_text(color = "black", face = "bold",size = 6))+
+  coord_cartesian(clip = "off")
+
+E1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|shift",])+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[9], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(-3,3)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(1,1,-15,1)),
+        axis.text.x = element_text(color = "black", face = "bold",size = 6))+
+  coord_cartesian(clip = "off")
+
+F1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|const",])+
+  geom_line(aes(dist, d18O_res, group=ID), color="grey", size=.3, alpha=.8)+
+  geom_smooth(aes(dist, d18O_res), color="black", fill=mypallette[10], 
+              alpha=1, size=.3, method = "gam")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  ylim(-3,3)+
+  xlim(0,2100)+
+  labs(x="")+
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.margin = margin(c(1,1,-15,1)),
+        axis.text.x = element_text(color = "black", face = "bold",size = 6))+
+  coord_cartesian(clip = "off")
+
+Plot <- ggarrange(A,B,C,D,E,F,A1,B1,C1,D1,E1,F1, 
+          nrow = 2, ncol = 6, 
+          widths = c(1,1,1,1,1,1),
           heights = c(1.5,1.5),
           align = "v",
-          labels = c("a","b","c"),
+          labels = c("A","B","C","D","E","F"),
           label.x = .1,
           label.y = 1.03)
 
-png(filename = "Figures/Life-history-plots_FW.png", 
+png(filename = "Figures/Life-history-plots_FW_revised.png", 
     width = 5000, height = 2000, res = 600)
 annotate_figure(Plot,
                 bottom = text_grob(expression(bold("Distance from core"~(mu*"m"))),
@@ -2041,6 +2018,102 @@ annotate_figure(Plot,
                 fig.lab.size = 5,
                 fig.lab.face = "bold")
 dev.off()
+```
+
+```{r dissimilarity test, include=FALSE, eval=FALSE}
+rm(list = ls())
+#read in data
+load("Data/Pike/Adults_element_transects_hierarchical_all.RData")
+
+dataLagoon <- Bgroup%>%
+  transmute(ID=ID,
+            Sr=Sr,
+            d18O_res=d18O_res,
+            year=year)
+
+dataFW <- Fgroup%>%
+  transmute(ID=ID,
+            Sr=Sr,
+            d18O_res=d18O_res,
+            year=year)
+
+#transform data to all positive
+dataLagoon$d18O_res <- (dataLagoon$d18O_res+sqrt((min(dataLagoon$d18O_res))^2))
+#So a value of d18O res is now to be interpreted as residual from predicted
+#value + 2.518462
+
+dataLagoon$Sr <- (dataLagoon$Sr+sqrt((min(dataLagoon$Sr))^2))
+#So a value of Sr is now to be interpreted as scaled value + 2.716513
+
+#Same for reshwater group
+dataFW$d18O_res <- (dataFW$d18O_res+sqrt((min(dataFW$d18O_res))^2))
+dataFW$Sr <- (dataFW$Sr+sqrt((min(dataFW$Sr))^2))
+
+#join
+data <- rbind(dataLagoon, dataFW)
+
+#make list of matrices Bodden
+IDOto <- unique(data$ID)
+series <- list()
+
+for (i in 1:length(IDOto)) {
+  m <- as.matrix(data[which(data$ID==IDOto[i]),])
+  series[[length(series)+1]] <- m
+}
+
+names(series) <- c(IDOto)
+
+#Revert from list to data frame, assign cell numbers
+Series <- do.call(rbind.data.frame,series)
+Series$ID <- substr(rownames(Series), 1,8)
+rownames(Series) <- NULL
+
+#Make cluster list
+Bclust <- fishassign_B%>%
+  transmute(ID=ID,
+            clust=clust2)
+Fclust <- fishassign_F%>%
+  transmute(ID=ID,
+            clust=clust2)
+
+clust <- rbind(Bclust, Fclust)
+
+#Assign years based on cell numbers, join with cluster ID
+Series1 <- Series%>%
+  inner_join(clust, by="ID")%>%
+  transmute(ID=ID,
+            year=case_when(year<2~"orig",
+                           year>1&year<3~"juv",
+                           year>2~"adult"),
+            clust=clust,
+            Sr=Sr,
+            d18O_res=d18O_res)%>%
+  group_by(ID, year)%>%
+  summarize(ID=ID,
+            year=year,
+            clust=clust,
+            Sr=mean(as.numeric(Sr)),
+            d18O_res=mean(as.numeric(d18O_res)))%>%
+  distinct()
+
+#Make wide for testing
+Series2 <- pivot_wider(Series1, names_from = year, values_from = c(Sr, d18O_res))
+
+#cluster needs to be a factor
+Series2$clust <- as.factor(Series2$clust)
+
+#make mvabund object of Sr and d18O data
+elements <- mvabund(Series2[,3:8])
+
+boxplot(elements, na.rm=T)
+
+Pikedist <- vegdist(elements, method = "euclidean", na.rm = T)
+Disp <- betadisper(Pikedist, Series2$clust)
+anova(Disp)
+
+plot(Disp)
+
+adonis2(elements~Series2$clust, method = "euclidean", permutations = 9999, na.rm=T)
 ```
 
 ## Setup and cleanup of data for mixed models
@@ -2470,6 +2543,8 @@ pike_inc <- pike_increments %>% inner_join(fishdata, by="id")%>%
             year=year,
             increment=increment,
             quality=quality)
+
+#join 2022 sample
 
 #convert inc to rad
 IDpike <- unique(pike_inc$ID)
@@ -3018,8 +3093,6 @@ standata_growth_2 = list(
 ```{r individual Growth analysis, include=FALSE, eval=FALSE}
 # Script to fit individual-level growth curve
 
-rm(list = ls())
-
 # all groups (now working)
 stancode <- ("Data/Stancode/Growth_model_hierarchical_ecotypes_normal_final.stan")
 # different grouping, similar to Höhne et al., no transformation
@@ -3327,4 +3400,219 @@ png(filename = "Figures/SI-vlues_ecotypes.png",
 annotate_figure(Fig, top = text_grob("SI signature of pike ecotypes", 
                                      color = "black", face = "bold", size = 15, vjust = 0.8, hjust = 1))
 dev.off()
+```
+
+#Partitional clustering
+```{r Partitional dtw clustering Sr, include=FALSE, eval=FALSE}
+load("Data/Pike/Adults_element_transects_partitional-prep.RData")
+
+#cluster Bodden with cutoff test
+clust_B <- tsclust(series = Bseries_Sr, type = "partitional",
+                  k = 2L:6L,centroid = "dba",
+                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
+
+names(clust_B) <- paste0("k_",2L:6L)
+
+sapply(clust_B, cvi, type = "internal")
+
+EvalB <- data.frame(sapply(clust_B, cvi, type = "internal"))
+EvalB$win <- c("warning", "max","max","min","min","warning","warning")
+
+#cluster FW with cutoff test
+clust_F <- tsclust(series = Fseries_Sr, type = "partitional",
+                  k = 2L:6L,centroid = "dba",
+                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
+
+names(clust_F) <- paste0("k_",2L:6L)
+
+EvalF <- data.frame(sapply(clust_F, cvi, type = "internal"))
+EvalF$win <- c("warning", "max","max","min","min","warning","warning")
+
+#plot best solution lagoon
+Lagoonplot <- plot(clust_B$k_2, type="sc", lwd=2)+
+  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
+  labs(x="transect cell", y="scaled value")+
+  theme(axis.text = element_text(size = 25, color="black"),
+        axis.title = element_text(size = 25),
+        plot.title = element_text(size = 25, hjust = 0.5))
+
+#Plot best solution Freshwater
+FWplot <- plot(clust_F$k_2, type="sc", linetype="solid", cex=2)+
+  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
+  labs(x="transect cell", y="scaled value")+
+  theme(axis.text = element_text(size = 25, color="black"),
+        axis.title = element_text(size = 25),
+        plot.title = element_text(size = 25, hjust = 0.5))
+
+save(Fgroup,Bgroup,dataB, dataF, Bseries, Fseries, interpol, clust_B, clust_F, Lagoonplot, FWplot,
+     file = "Data/Pike/Adults_element_partitional-clusters.RData")
+```
+
+```{r Partitional dtw clustering d18O, include=FALSE, eval=FALSE}
+rm(list = ls())
+
+load("Data/Pike/Adults_element_transects_partitional-prep.RData")
+
+#cluster Bodden with cutoff test
+clust_B <- tsclust(series = Bseries_d18O, type = "partitional",
+                  k = 2L:6L,centroid = "dba",
+                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
+
+names(clust_B) <- paste0("k_",2L:6L)
+
+sapply(clust_B, cvi, type = "internal")
+
+EvalB <- data.frame(sapply(clust_B, cvi, type = "internal"))
+EvalB$win <- c("warning", "max","max","min","min","warning","warning")
+
+#cluster FW with cutoff test
+clust_F <- tsclust(series = Fseries_d18O, type = "partitional",
+                  k = 2L:6L,centroid = "dba",
+                  seed = 94L,args = tsclust_args(dist = list(window.size =5L)))
+
+names(clust_F) <- paste0("k_",2L:6L)
+
+EvalF <- data.frame(sapply(clust_F, cvi, type = "internal"))
+EvalF$win <- c("warning", "max","max","min","min","warning","warning")
+
+#plot best solution lagoon
+Lagoonplot_d18O <- plot(clust_B$k_2, type="sc", lwd=2)+
+  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
+  labs(x="transect cell", y="scaled value")+
+  theme(axis.text = element_text(size = 25, color="black"),
+        axis.title = element_text(size = 25),
+        plot.title = element_text(size = 25, hjust = 0.5))
+
+#Plot best solution Freshwater
+FWplot_d18O <- plot(clust_F$k_2, type="sc", linetype="solid", cex=2)+
+  ylim(-3,3)+ggtitle(expression("Sr/"~delta^18~O~"cluster centroids"))+
+  labs(x="transect cell", y="scaled value")+
+  theme(axis.text = element_text(size = 25, color="black"),
+        axis.title = element_text(size = 25),
+        plot.title = element_text(size = 25, hjust = 0.5))
+
+save(Fgroup,Bgroup,dataBO, dataFO, Bseries_d18O, Fseries_d18O, interpol, clust_B, clust_F, Lagoonplot_d18O, FWplot_d18O,
+     file = "Data/Pike/Adults_element_partitional-d18O-clusters.RData")
+```
+
+```{r Salinity cluster assignment partitional, include=FALSE, eval=FALSE}
+rm(list=ls())
+load("Data/Pike/Adults_element_partitional-Sr-clusters.RData")
+
+#Lagoon sample
+#Look at clusters
+Lagoonplot
+
+#assign clusters to fish
+fishassign_B <- data.frame(ID=names(Bseries_Sr), 
+                            clust=factor(clust_B$k_2@cluster, 
+                                           levels = c(1:2), 
+                                           labels = c("BW low saline",
+                                                      "BW high saline")))
+
+
+#FW sample
+#Look at clusters
+FWplot
+
+fishassign_F2 <- data.frame(ID=names(Fseries_Sr), 
+                            clust=factor(clust_F$k_2@cluster, 
+                                           levels = c(1:2), 
+                                           labels = c("FW high saline",
+                                                      "FW low saline")))
+#Join dtw clusters with pike data
+Bgroup$area <- ifelse(Bgroup$area=="Marine", "GB", Bgroup$area)
+
+fishassign_B <- Bgroup%>%
+  group_by(ID)%>%
+  transmute(ID=ID,
+            capt=capt,
+            area=as.factor(area),
+            areaorder=case_when(area=="WRB"~1,
+                                area=="NRB"~2,
+                                area=="GB"~3,
+                                area=="Freshwater"~4))%>%
+  distinct()%>%
+  inner_join(fishassign_B, by="ID")
+  mutate(clust=fct_relevel(clust,
+                            "BW low saline",
+                            "BW high saline"))
+
+fishassign_F <- Fgroup%>%
+  group_by(ID)%>%
+  transmute(ID=ID,
+            capt=capt,
+            area=area)%>%
+  distinct()%>%
+  inner_join(fishassign_F2, by="ID")
+  mutate(clust=fct_relevel(clust,
+                            "FW low saline",
+                            "FW high saline"))
+
+
+write.table(fishassign_B, "Data/Pike/Bcluster_saline_all.txt", row.names = F, sep = "\t",
+            dec = ".")
+write.table(fishassign_F, "Data/Pike/Fcluster_saline_all.txt", row.names = F, sep = "\t",
+            dec = ".")
+```
+
+```{r Thermal cluster assignment partitional, include=FALSE, eval=FALSE}
+rm(list=ls())
+load("Data/Pike/Adults_element_partitional-d18O-clusters.RData")
+
+#Lagoon sample
+#Look at clusters
+Lagoonplot_d18O
+
+#assign clusters to fish
+fishassign_B <- data.frame(ID=names(Bseries_d18O), 
+                            clust=factor(clust_B$k_2@cluster, 
+                                           levels = c(1:2), 
+                                           labels = c("BW cold",
+                                                      "BW warm")))
+
+
+#FW sample
+#Look at clusters
+FWplot_d18O
+
+fishassign_F2 <- data.frame(ID=names(Fseries_d18O), 
+                            clust=factor(clust_F$k_2@cluster, 
+                                           levels = c(1:2), 
+                                           labels = c("FW cold",
+                                                      "FW shift")))
+#Join dtw clusters with pike data
+Bgroup$area <- ifelse(Bgroup$area=="Marine", "GB", Bgroup$area)
+
+fishassign_B <- Bgroup%>%
+  group_by(ID)%>%
+  transmute(ID=ID,
+            capt=capt,
+            area=as.factor(area),
+            areaorder=case_when(area=="WRB"~1,
+                                area=="NRB"~2,
+                                area=="GB"~3,
+                                area=="Freshwater"~4))%>%
+  distinct()%>%
+  inner_join(fishassign_B, by="ID")%>%
+  mutate(clust=fct_relevel(clust,
+                            "BW cold",
+                            "BW warm"))
+
+fishassign_F <- Fgroup%>%
+  group_by(ID)%>%
+  transmute(ID=ID,
+            capt=capt,
+            area=area)%>%
+  distinct()%>%
+  inner_join(fishassign_F2, by="ID")%>%
+  mutate(clust=fct_relevel(clust,
+                            "FW cold",
+                            "FW shift"))
+
+
+write.table(fishassign_B, "Data/Pike/Bcluster_saline_all.txt", row.names = F, sep = "\t",
+            dec = ".")
+write.table(fishassign_F, "Data/Pike/Fcluster_saline_all.txt", row.names = F, sep = "\t",
+            dec = ".")
 ```
