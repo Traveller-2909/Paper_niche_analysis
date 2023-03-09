@@ -39,6 +39,12 @@ rstan_options(auto_write = TRUE)
 ```
 
 ## preparation of Sr and d18O data
+Five fish excluded: 
+"BH-01701" -> Missplaced transect,
+"BH-01741" -> Vaterite,
+"BH-01908" -> Vaterite,
+"BH-90962" -> Lost,
+"BH-93190" -> no SIMS transect
 ```{r marry d18O data to Sr, include=FALSE, eval=FALSE}
 #Read in LA-ICPMS and SIMS data
 rm(list = ls())
@@ -2116,7 +2122,7 @@ plot(Disp)
 adonis2(elements~Series2$clust, method = "euclidean", permutations = 9999, na.rm=T)
 ```
 
-```{r jackknife reclassification 3 year olds, eval=FALSE}
+```{r jackknife reclassification, eval=FALSE}
 set.seed(128)
 
 Series3 <- na.omit(Series2)
@@ -2525,71 +2531,103 @@ write.table(Lungdata,
 rm(list = ls())
 
 #read in pike data
-fishdata <- read.delim("Data/Pike/Scales_Oto_data.txt", sep = "\t", dec = ".", 
-                       header = T, stringsAsFactors = F)
-names(fishdata) <- tolower(names(fishdata))
+Pike1 <- read.delim("C:/Users/timor/Nextcloud2/Boddenhecht/Data/Pike Data/1.pike_data_base_FOR_USERS/1Pike_Latest_Version.txt", 
+                    sep = ";", dec = ".", header = T, stringsAsFactors = F)
+Pike2 <- Pike1%>%
+  transmute(ID=case_when(Fish_ID=="BH-91050.2"~"BH-91050",
+                         Fish_ID=="BH-51614"&Waterbody=="BAT"~"NA",
+                         Fish_ID=="BH-90307"&MarkorRecap=="Mark"~"NA",
+                         TRUE~Fish_ID),
+            capt_date=Date,
+            TL_mm = Total_Length_mm,
+            Weight=Weight,
+            sex=Sex,
+            area=Waterbody)
 
 #load in age readings
-pike_increments_B <- read.delim("Data/Pike/Otolith_combo_round2.txt", 
-                              header = T, stringsAsFactors = F)
-names(pike_increments_B) <- tolower(names(pike_increments_B))
+pike_increments_2022 <- read.delim("Data/Pike/Sample_2022_oto_increments.txt", header = T, stringsAsFactors = F)
+pike_increments_2021 <- read.delim("Data/Pike/Sample_2021_oto_increments.txt", header = T, stringsAsFactors = F)
+pike_increments_pilot <- read.delim("Data/Pike/Pilot_sample_oto_increments.txt", header = T, stringsAsFactors = F)
 
-pike_increments_Ana <- read.delim("Data/Pike/combined_anadromous.txt",
-                                  header = T, stringsAsFactors = F)
-names(pike_increments_Ana) <- tolower(names(pike_increments_Ana))
+pike_increments_pilot$Sample <- substr(pike_increments_pilot$Sample,3,10)
 
-#read in decoder
-decoder_B <- read.delim("Data/Pike/Decoding_file_05-10-21_BH-00670-90307_Otoliths.txt", header = T, stringsAsFactors = F)
+pike_increments <- rbind(pike_increments_2021, pike_increments_2022, pike_increments_pilot)
 
-names(decoder_B) <- tolower(names(decoder_B))
+substrRight <- function(x, n){
+  substr(x, nchar(x)-n+1, nchar(x))
+}
 
-decoder_Ana <- read.delim("Data/Pike/Decoding_file_12-10-21_BH-00670-90307_Otoliths.txt", header = T, stringsAsFactors = F)
+pike_increments2 <- pike_increments%>%
+  group_by(Sample)%>%
+  transmute(ID=substrRight(Sample,8),
+            Quality=Quality,
+            Age=Age,
+            Cohort=Cohort,
+            Core=Core,
+            lifeyear=I,
+            total_rad_um=sum(Increment, na.rm = T),
+            year=Year,
+            Increment=Increment)%>%
+  ungroup()
 
-names(decoder_Ana) <- tolower(names(decoder_Ana))
-
-pike_increments_B$random_id <- pike_increments_B$sample
-pike_increments_Ana$random_id <- pike_increments_Ana$sample
-
-#decode
-pike_increments_B <- pike_increments_B %>% inner_join(decoder_B, by = "random_id")
-pike_increments_Ana <- pike_increments_Ana%>%inner_join(decoder_Ana, by="random_id")
-
-pike_increments <- rbind(pike_increments_Ana, pike_increments_B)
-
-pike_inc <- pike_increments %>% inner_join(fishdata, by="id")%>%
-  transmute(ID=id,
-            age=age,
-            cohort=cohort,
+pike_inc <- pike_increments2 %>% inner_join(Pike2, by="ID")%>%
+  group_by(ID)%>%
+  transmute(ID=ID,
+            age=Age,
+            cohort=Cohort,
             capt=area,
-            TL=tl,
-            weigth=weight,
+            TL=TL_mm,
+            weigth=Weight,
             sex=sex,
-            date=lubridate::date(parse_date_time(date, "dmy")),
-            core=core,
-            i=i,
+            date=lubridate::date(parse_date_time(capt_date, "ymd")),
+            core=Core,
+            lifeyear=as.integer(lifeyear),
             year=year,
-            increment=increment,
-            quality=quality)
+            increment=Increment,
+            total_rad_um=total_rad_um,
+            quality=Quality)%>%
+  drop_na(lifeyear)%>%
+  arrange(ID,lifeyear)
 
-#join 2022 sample
+pike_inc <- as.data.frame(pike_inc)
 
 #convert inc to rad
 IDpike <- unique(pike_inc$ID)
 rad <- NULL
 for (i in 1:length(IDpike)) {
   d <- cumsum(coalesce(pike_inc[which(pike_inc$ID == IDpike[i]), "increment"], 0)) + pike_inc[which(pike_inc$ID == IDpike[i]), "increment"]*0
- rad <- c(rad, d)
+  
+  rad <- c(rad, d)
 }
 
 pike_inc$rad <- rad
 
-write.table(pike_inc, file = "Data/Pike/Oto_increment_data_with_rad.txt",
+pike_inc2 <- pike_inc%>%
+  group_by(ID)%>%
+  transmute(ID=ID,
+            age=age,
+            cohort=cohort,
+            capt=capt,
+            TL_mm=TL,
+            weight_g=weigth,
+            sex=sex,
+            date=date,
+            core=core,
+            lifeyear=lifeyear,
+            year=year,
+            increment_um=increment,
+            rad_um=rad,
+            total_rad_um=total_rad_um,
+            quality=quality)%>%
+  drop_na(lifeyear)
+
+write.table(pike_inc2, file = "Data/Pike/Oto_increment_data_with_rad.txt",
             sep = "\t", dec = ".", row.names = F)
 ```
 
 ```{r join growth measurements with cluster, include=FALSE, eval=FALSE}
 
-#rm(list = ls())
+rm(list = ls())
 
 #read in data on increment widths
 pike_inc <- read.delim(file = "Data/Pike/Oto_increment_data_with_rad.txt",
@@ -2601,21 +2639,27 @@ fishassign_B <- read.delim(file = "Data/Pike/Bcluster_all.txt",
 fishassign_F <- read.delim(file = "Data/Pike/Fcluster_all.txt", 
                            header = T, stringsAsFactors = F, dec = ".", sep = "\t")
 
-allpike <- rbind(fishassign_B[,c(1:3,5)], fishassign_F)
+allpike_clust <- rbind(fishassign_B[,c(1,5)], fishassign_F[,c(1,4)])
 
 #join increment data with clustering results
-pikedat <- allpike%>%
+allpike_clust <- allpike_clust%>%
   transmute(ID=ID,
-            area=area,
-            clust=case_when(clust2 == "High saline|warm"~"HighS|Tconstant",
-                            clust2 == "Int saline|cold"~"IntS|Tcold",
-                            clust2 == "Low saline|cold"~"LowS|Tshift",
-                            clust2 == "FW high saline|shift"~"FWHighS|Tshift",
-                            clust2 == "FW low saline|cold"~"FWresident|Tcold",
-                            clust2 == "FW low saline|shift"~"FWresident|Tshift"))%>%
-  inner_join(pike_inc, by = "ID")
+            clust=clust2,
+            ecotype=case_when(clust=="FW low saline|cold"~"FW_resident",
+                              clust=="FW low saline|shift"~"FW_resident",
+                              clust=="FW int saline|const"~"Anadromous",
+                              clust=="FW int saline|shift"~"Anadromous",
+                              clust=="FW high saline|shift"~"Anadromous",
+                              clust=="FW high saline|const"~"Trans-habitat",
+                              clust=="BW Low saline|shift"~"Trans-habitat",
+                              clust=="BW int saline|cold"~"BW-resident",
+                              clust=="BW high saline|cold"~"BW-resident",
+                              clust=="BW high saline|warm"~"BW-resident"))
 
-write.table(pikedat, "Data/Pike/Growthdata_clusters.txt", row.names = F,
+pikedata <- pike_inc%>%
+  inner_join(allpike_clust, by = "ID")
+
+write.table(pikedata, "Data/Pike/Growthdata_clusters.txt", row.names = F,
             sep = "\t", dec = ".")
 ```
 
@@ -2626,36 +2670,49 @@ rm(list = ls())
 Lungdata <- read.delim("Data/Environment/LUNGdata.txt", header = T, 
                        stringsAsFactors = F, sep = "\t", dec = ".")
 
-pikedat <- read.delim("Data/Pike/Growthdata_clusters.txt", 
+pikedata <- read.delim("Data/Pike/Growthdata_clusters.txt", 
                         sep = "\t", dec = ".", header = T, stringsAsFactors = F)
 
 
 #Clean up data frames
-pikedata <- pikedat%>%
-  transmute(ID=as.character(ID),
-            area=area,
+pikedata1 <- pikedata%>%
+  transmute(ID=ID,
+            area=case_when(capt=="SB"~"WRB",
+                           capt=="KB"~"WRB",
+                           capt=="Sehrowbach"~"Tributary",
+                           capt=="Ziese"~"Tributary",
+                           capt=="NHG"~"Tributary",
+                           capt=="WB"~"NRB",
+                           capt=="BEG"~"NRB",
+                           capt=="KJB"~"NRB",
+                           capt=="GJB"~"NRB",
+                           capt=="GB"~"GB",
+                           capt=="Peene"~"Tributary",
+                           capt=="Barthe"~"Tributary",
+                           capt=="Badendycksgraben"~"Tributary"),
             capt=capt,
-            clust=as.factor(clust),
-            age=as.integer(age),
-            cohort=as.integer(cohort),
-            weight=weigth,
-            TL=as.numeric(TL),
+            TL_mm=as.numeric(TL_mm),
+            weight_g=as.numeric(weight_g),
             sex=as.factor(sex),
-            lifeyear=factor(i, levels = c(1:13), labels = c(1:13)),
-            year=year,
-            inc=as.numeric(increment),
-            rad=as.numeric(rad))
+            date=date,
+            lifeyear=as.numeric(lifeyear),
+            year=as.factor(year),
+            inc_um=as.numeric(increment_um),
+            rad_um=as.numeric(rad_um),
+            total_rad_um=as.numeric(total_rad_um),
+            clust=as.factor(clust),
+            ecotype=as.factor(ecotype))
 
 #Bind together
 
-oto_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation.txt",
+oto_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation_with_res.txt",
                          header = T, dec = ".", sep = "\t",
                          stringsAsFactors = F)
 
 oto_years <- oto_lowres%>%
-  group_by(ID,year)%>%
-  summarise(ID=ID,
-            lifeyear=as.factor(year),
+  group_by(fish_ID,lifeyear)%>%
+  summarise(ID=fish_ID,
+            lifeyear=as.numeric(lifeyear),
             d18O_mean=mean(d18O, na.rm=T),
             res_mean=mean(res, na.rm=T),
             Sr_mean=mean(Sr, na.rm=T),
@@ -2667,7 +2724,7 @@ oto_years <- oto_lowres%>%
             Sr_max=max(Sr, na.rm=T))%>%
   drop_na()
 
-pikedata1 <- pikedata%>%inner_join(oto_years, by=c("ID", "lifeyear"))%>%
+pikedata2 <- pikedata1%>%left_join(oto_years, by=c("ID", "lifeyear"))
   transmute(ID=ID,
             waterbody=area,
             capt=capt,
