@@ -45,6 +45,11 @@ Five fish excluded:
 "BH-01908" -> Vaterite,
 "BH-90962" -> Lost,
 "BH-93190" -> no SIMS transect
+## Color codes ecotypes
+"#004643" --> brackish resident,"#00BFB2" --> anadromous,"#F1C40F" --> cross-habitat,"#C5D86D" --> frehwater resident,
+"#AF3800" --> unknown
+
+
 ```{r marry d18O data to Sr, include=FALSE, eval=FALSE}
 #Read in LA-ICPMS and SIMS data
 rm(list = ls())
@@ -2695,6 +2700,7 @@ pikedata1 <- pikedata%>%
             weight_g=as.numeric(weight_g),
             sex=as.factor(sex),
             date=date,
+            age=age,
             lifeyear=as.numeric(lifeyear),
             year=as.factor(year),
             inc_um=as.numeric(increment_um),
@@ -2709,7 +2715,7 @@ oto_lowres <- read.delim("Data/Pike/Oto_LA-to-d18O_interpolation_with_res.txt",
                          header = T, dec = ".", sep = "\t",
                          stringsAsFactors = F)
 
-oto_years <- oto_lowres%>%
+pike_years <- oto_lowres%>%
   group_by(fish_ID,lifeyear)%>%
   summarise(ID=fish_ID,
             lifeyear=as.numeric(lifeyear),
@@ -2724,35 +2730,34 @@ oto_years <- oto_lowres%>%
             Sr_max=max(Sr, na.rm=T))%>%
   drop_na()
 
-pikedata2 <- pikedata1%>%left_join(oto_years, by=c("ID", "lifeyear"))
+pikedata2 <- pikedata1%>%left_join(pike_years, by=c("ID", "lifeyear"))%>%
   transmute(ID=ID,
             waterbody=area,
             capt=capt,
             clust=clust,
+            ecotype=ecotype,
             age=age,
-            cohort=cohort,
-            weight=weight,
-            TL=TL,
+            weight_g=weight_g,
+            TL_mm=TL_mm,
             sex=sex,
             lifeyear=lifeyear,
-            year=year.x,
-            inc=inc,
-            rad=rad,
-            d18O_mean=d18O_mean,
-            d18O_max=d18O_max,
-            d18O_min=d18O_min,
+            year=year,
+            inc_um=inc_um,
+            rad_um=rad_um,
             res_mean=res_mean,
             res_max=res_max,
             res_min=res_min,
             Sr_mean=Sr_mean,
             Sr_max=Sr_max,
             Sr_min=Sr_min)%>%
-  drop_na(inc,rad,year)%>%
+  drop_na(inc_um,rad_um,year)%>%
   distinct()
 
-pikedata2 <- pikedata1%>%left_join(Lungdata, by=c("waterbody", "year"))
+Lungdata$year <- as.factor(Lungdata$year)
 
-write.table(pikedata2, 
+pikedata3 <- pikedata2%>%left_join(Lungdata, by=c("waterbody", "year"))
+
+write.table(pikedata3, 
             file = "Data/Pike/Pikedata.txt", 
             sep = "\t", dec = ".", row.names = F)
 ```
@@ -2764,8 +2769,6 @@ rm(list = ls())
 pikes <- read.delim("Data/Pike/Pikedata.txt", header = T, stringsAsFactors = F,
                     sep = "\t", dec = ".")
 
-pikes$clust
-
 head(pikes)
 tail(pikes)
 str(pikes)
@@ -2774,17 +2777,17 @@ str(pikes)
 pikes2 <- pikes%>%
   transmute(ID=ID,
             waterbody=as.factor(waterbody),
-            TL=TL,
+            TL_mm=TL_mm,
             clust=as.factor(clust),
+            ecotype=as.factor(ecotype),
             sex=as.factor(sex),
             lifeyear=lifeyear,
-            inc=inc,
+            inc_um=inc_um,
             res_mean=as.numeric(scale(res_mean)),
-            Sr_mean=as.numeric(scale(Sr_mean)),
-            visibility=as.numeric(scale(turbidity)),
-            Sal=as.numeric(scale(SAL)),
-            WT=as.numeric(scale(WT)),
-            P=as.numeric(scale(P)))
+            Sr_mean=as.numeric(scale(Sr_mean)))%>%
+  drop_na(res_mean, Sr_mean)
+
+pikes2[pikes2$ID=="BH-90307",]$sex <- "f"
 
 write.table(pikes2, "Data/Pike/Pikedata_model.txt", sep="\t", dec=".",
             row.names = F)
@@ -2798,14 +2801,15 @@ str(pikes2)
 #Exploration
 
 par(mfrow=c(1,2))
-dotchart(pikes2$inc, color = pikes2$clust, main = "Color = Ecotype(Cluster)")
+dotchart(pikes2$inc, color = pikes2$ecotype, main = "Color = Ecotype(Cluster)")
 dotchart(pikes2$inc, color = pikes2$sex, main = "Color = Sex")
+dotchart(pikes2$inc, color = pikes2$lifeyear, main = "Color = d18O")
 ```
 
 ```{r Exploration, include=FALSE, echo=FALSE, eval=FALSE, fig.height=5, fig.width=8}
 par(mfrow=c(3,2))
 boxplot(pikes2$inc~pikes2$lifeyear, ylab ="Growth increment", xlab = "Age")
-boxplot(pikes2$inc~pikes2$clust, ylab ="Growth increment", xlab = "Ecotype")
+boxplot(pikes2$inc~pikes2$ecotype, ylab ="Growth increment", xlab = "Ecotype")
 boxplot(pikes2$inc~pikes2$sex, ylab ="Growth increment", xlab = "Sex")
 plot(pikes2$inc~pikes2$res_mean, ylab ="Growth increment", xlab = "d18O")
 plot(pikes2$inc~pikes2$Sr_mean, ylab ="Growth increment", xlab = "Sr")
@@ -2823,18 +2827,20 @@ plot(0, xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
 ## Initial model (Try using exponential term for age!!!)
 $$log10(Inc) \sim Age*cluster+Age*d18Ores+Srmean+turbidity+salinity+WT+P+Sex+(1|Loc/ID)$$
 
-```{r exclude random effect of ID, include=FALSE, eval=FALSE}
+```{r initial model, include=FALSE, eval=FALSE}
 #Run model
-pikemodel.1 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
-                        Sr_mean+sex+(1|waterbody/ID), 
-                      REML = T, data = pikes2)
+pikemodel.1 <- lmer(log10(inc_um)~res_mean+lifeyear*ecotype+exp(-lifeyear)+Sr_mean+sex+(1|ID),
+                    REML = F, data = pikes2)
+pikemodel.1.1 <- lmer(log10(inc_um)~res_mean+lifeyear*ecotype+I(lifeyear^2)+Sr_mean+sex+(1|ID),
+                    REML = F, data = pikes2)
+anova(pikemodel.1, pikemodel.1.1)
 summary(pikemodel.1)
 #Random effects cannot be estimated as too low variance
 #Model runs properly when excluding ID:
-pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
-                      Sr_mean+sex+(1|waterbody), 
-                      REML = T, data = pikes2)
-summary(pikemodel.1.0)
+# pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
+#                       Sr_mean+sex+(1|waterbody), 
+#                       REML = T, data = pikes2)
+# summary(pikemodel.1.0)
 ```
  
 ## New model
@@ -2842,11 +2848,10 @@ $$log10(Inc) \sim Age*d18Ores+Age*cluster+Age^2+Srmean+Sex+(1|Location)$$
 
 ```{r Look at variance inflation factors, echo=TRUE, eval=FALSE}
 #Look at variance inflation factors
-pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
-                      Sr_mean+sex+(1|waterbody), 
-                      REML = T, data = pikes2)
+pikemodel.1 <- lmer(log10(inc_um)~res_mean+lifeyear*ecotype+I(lifeyear^2)+Sr_mean+sex+(1|ID),
+                    REML = T, data = pikes2)
 
-pike.vif <- vif(pikemodel.1.0)
+pike.vif <- vif(pikemodel.1)
 
 barplot(pike.vif[,3], main = "VIF values", horiz = F, col = "darkgreen", ylim = c(0,6),
         las = 2)
@@ -2857,60 +2862,57 @@ abline(h = 5, lwd = 3, lty = 2, col="red")
 ```{r test random effects, echo=TRUE, eval=FALSE}
 #Test model components
 #Test random effects
-rand(pikemodel.1.0)
+rand(pikemodel.1)
 ```
 
 ```{r test effects age, echo=TRUE, eval=FALSE}
 #Remove age quadratic term
-pikemodel.1.0 <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
-                      Sr_mean+sex+(1|waterbody), 
-                      REML = F, data = pikes2)
+pikemodel.1 <- lmer(log10(inc_um)~res_mean+lifeyear*ecotype+I(lifeyear^2)+Sr_mean+sex+(1|ID),
+                    REML = F, data = pikes2)
 
-pikemodel.noage <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+
-                      Sr_mean+sex+(1|waterbody), 
-                      REML = F, data = pikes2)
+pikemodel.noage <- lmer(log10(inc_um)~res_mean+lifeyear*ecotype+Sr_mean+sex+(1|ID),
+                    REML = F, data = pikes2)
 
-anova(pikemodel.1.0, pikemodel.noage)
+anova(pikemodel.1, pikemodel.noage)
 #age is significant
 ```
 
 ```{r test cluster effects, eval=FALSE}
-pikemodel.noclust <- lmer(log10(inc)~lifeyear*res_mean+clust+I(lifeyear^2)+
-                      Sr_mean+sex+(1|waterbody), 
-                      REML = F, data = pikes2)
-anova(pikemodel.1.0, pikemodel.noclust)
+pikemodel.noclust <- lmer(log10(inc_um)~res_mean+I(lifeyear^2)+Sr_mean+sex+(1|ID),
+                    REML = F, data = pikes2)
+anova(pikemodel.1, pikemodel.noclust)
 #age*cluster is significant
 ```
 
 ```{r test effects d18O, echo=TRUE, eval=FALSE}
 #Remove d18O
-pikemodel.nores <- lmer(log10(inc)~lifeyear*clust+res_mean+I(lifeyear^2)+
-                      Sr_mean+sex+(1|waterbody), 
-                      REML = F, data = pikes2)
-anova(pikemodel.1.0, pikemodel.nores)
+pikemodel.nores <- lmer(log10(inc_um)~lifeyear*ecotype+I(lifeyear^2)+Sr_mean+sex+(1|ID),
+                    REML = F, data = pikes2)
+anova(pikemodel.1, pikemodel.nores)
 #relative d18O significant
 ```
 
 ```{r test effects Sr, echo=TRUE, eval=FALSE}
 #Remove Sr
-pikemodel.noSr <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
-                      sex+(1|waterbody), 
-                      REML = F, data = pikes2)
-anova(pikemodel.1.0, pikemodel.noSr)
+pikemodel.noSr <- lmer(log10(inc_um)~res_mean+lifeyear*ecotype+I(lifeyear^2)+sex+(1|ID),
+                    REML = F, data = pikes2)
+anova(pikemodel.1, pikemodel.noSr)
 #Sr not significant
 ```
 
 ```{r test effects sex, echo=TRUE, eval=FALSE}
 #Remove sex
-pikemodel.nosex <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
-                      Sr_mean+(1|waterbody), 
-                      REML = F, data = pikes2)
-anova(pikemodel.1.0, pikemodel.nosex)
+pikemodel.nosex <- lmer(log10(inc_um)~res_mean+lifeyear*ecotype+I(lifeyear^2)+Sr_mean+(1|ID),
+                    REML = F, data = pikes2)
+anova(pikemodel.1, pikemodel.nosex)
 #sex is significant
 ```
 
 ## Results
 ```{r table, out.width="120%", dpi=300, echo=FALSE, eval=FALSE, message=FALSE}
+pikemodel.final <- lmer(log10(inc_um)~res_mean+lifeyear*ecotype+I(lifeyear^2)+Sr_mean+sex+(1|ID),
+                    REML = T, data = pikes2)
+
 summary(pikemodel.final)
 tab_model(pikemodel.final, show.fstat = T, show.loglik = T, digits.re = 20)
 ```
@@ -2918,9 +2920,8 @@ tab_model(pikemodel.final, show.fstat = T, show.loglik = T, digits.re = 20)
 ## Model validation
 ```{r model validation, echo=FALSE, eval=FALSE}
 #validation
-pikemodel.final <- lmer(log10(inc)~lifeyear*res_mean+lifeyear*clust+I(lifeyear^2)+
-                      Sr_mean+sex+(1|waterbody), 
-                      REML = T, data = pikes2)
+pikemodel.final <- lmer(log10(inc_um)~res_mean+lifeyear*ecotype+I(lifeyear^2)+Sr_mean+sex+(1|ID),
+                    REML = T, data = pikes2)
 
 pikes2$resid <- resid(pikemodel.final)
 
@@ -2930,8 +2931,7 @@ hist(pikes2$resid, main = "", xlab = "Residuals")
 qqnorm(resid(pikemodel.final))
 qqline(resid(pikemodel.final))
 
-
-plot(pikes2$resid~pikes2$clust, ylab = "Residuals", xlab = "Cluster", las = 2)
+plot(pikes2$resid~pikes2$ecotype, ylab = "Residuals", xlab = "Cluster", las = 2)
 plot(pikes2$resid~pikes2$sex, ylab = "Residuals", xlab = "Sex")
 plot(pikes2$resid~pikes2$lifeyear, ylab = "Residuals", xlab = "Age")
 plot(pikes2$resid~pikes2$res_mean, ylab = "Residuals", xlab = "d18O")
@@ -2941,7 +2941,7 @@ r.squaredGLMM(pikemodel.final)
 ```
 
 ## Figure main effects
-```{r temperture effect figure, eval=FALSE}
+```{r temperature effect figure, eval=FALSE}
 pikes2 <- read.delim("Data/Pike/Pikedata_model.txt", header = T, 
                      stringsAsFactors = F, sep = "\t", dec = ".")
 
@@ -2951,13 +2951,13 @@ pikes2$agefact <- ifelse(pikes2$lifeyear<3, 2,
                                 ifelse(pikes2$lifeyear>6, 3, NA)))
 
 pikes2$agefact2 <- factor(pikes2$agefact,levels = c(2,1,3),
-                                            labels = c("juvenile", "adult", 
-                                                       "TL > 1 m"))
+                                            labels = c("0-2 years", "3-6 years", 
+                                                       "> 6 years"))
 
 mypallette <- viridis::viridis(4, direction = -1)
 
 #Temperature effect
-Temp <- ggplot(pikes2, aes(res_mean, log(inc), color=agefact2))+
+Temp <- ggplot(pikes2, aes(res_mean, log(inc_um), color=as.factor(lifeyear)))+
   geom_point(size=.5)+
   stat_smooth(method = "lm", fill="gray", fullrange = T, lwd=.8)+
   labs(x=expression(bold("scaled"~delta^18*"O"~("z-score"))), 
@@ -2996,41 +2996,96 @@ Temp <- ggplot(pikes2, aes(res_mean, log(inc), color=agefact2))+
                                      ymin=3.62, ymax=3.62,
                                      xmin=0, xmax=-2.5)
 
-png(filename = "Figures/Temperature_effects_growth.png", 
+Sal <- ggplot(pikes2, aes(Sr_mean, log(inc_um), color=agefact2))+
+  geom_point(size=.5)+
+  stat_smooth(method = "lm", fill="gray", fullrange = T, lwd=.8)+
+  labs(x=expression(bold("scaled"~"Sr/Ca"~("z-score"))), 
+       y=expression(bold("log increment"~(mu*"m"))),
+       color="ageclass")+
+  scale_color_viridis_d()+
+  theme_classic()+
+  theme(panel.grid.major = element_line(),
+        legend.position = c(.9,.9),
+        legend.background = element_blank(),
+        legend.box.background = element_rect(),
+        axis.line = element_line(size = .5, colour = "black", linetype = 1),
+        axis.ticks = element_line(size = .5, colour = "black"),
+        axis.text = element_text(size = 10, colour = "black"),
+        axis.title.x = element_text(size = 10, face = "bold", 
+                                    margin = margin(t=10)),
+        axis.title.y = element_text(size = 10, face = "bold"),
+        legend.text = element_text(size = 5),
+        legend.title = element_text(size = 10, face = "bold"),
+        legend.key.size = unit(.8,"line"))+
+  coord_cartesian(clip = "off")+
+  geom_segment(x=0, y=3.6, xend=2, yend=3.6, 
+               lineend = "butt", linejoin = "mitre",
+               size=2, arrow = arrow(length = unit(0.18, "inches")),
+               color="#FF6666")+
+  annotation_custom(grob = text_grob(label = "higher salinity", 
+                                     rot = 0, face = "bold", size = 8),
+                                     ymin=3.58, ymax=3.58,
+                                     xmin=1, xmax=2)+
+  geom_segment(x=0, y=3.6, xend=-2, yend=3.6, 
+               lineend = "butt", linejoin = "mitre",
+               size=2, arrow = arrow(length = unit(0.18, "inches")),
+               color="#66CCCC")+
+  annotation_custom(grob = text_grob(label = "lower salinity", 
+                                     rot = -0, face = "bold", size = 8),
+                                     ymin=3.58, ymax=3.58,
+                                     xmin=-1, xmax=-2)
+
+png(filename = "Figures/Salinity_effects_growth.png", 
     width = 3000, height = 1500, res = 600)
-annotate_figure(Temp, top = text_grob("Effect of relative lifelong temperature on pike growth", color = "black", face = "bold", size = 10, vjust = 1, hjust = 0.7))
+annotate_figure(Sal, top = text_grob("Effect of lifelong salinity on pike growth", color = "black", face = "bold", size = 10, vjust = 1, hjust = 0.7))
 dev.off()
 ```
 
 ```{r cluster effect figure, eval=FALSE}
+mypalette <- adjustcolor(c("#004643","#00BFB2","#F1C40F","#C5D86D","#AF3800"), alpha.f = 0.6)
+
 pikes2 <- read.delim("Data/Pike/Pikedata_model.txt", header = T, 
                      stringsAsFactors = F, sep = "\t", dec = ".")
 
-#rename clusters
-pikesF <- pikes2%>%
-  filter(clust=="F_HighS"|clust=="F_IntS"|clust=="F_LowS")
+pikemodel.final <- lmer(log10(inc_um)~res_mean+lifeyear*ecotype+I(lifeyear^2)+Sr_mean+sex+(1|ID),
+                    REML = T, data = pikes2)
 
-pikesB <- pikes2%>%
-  filter(clust=="S_LowS"|clust=="S_IntS"|clust=="S_HighS")
+lifeyear <- unique(pikes2$lifeyear)
+ecotype <- unique(pikes2$ecotype)
+res_mean <- seq(min(pikes2$res_mean), max(pikes2$res_mean), 0.1)
+Sr_mean <- seq(min(pikes2$Sr_mean), max(pikes2$res_mean),0.1)
+sex <- unique(pikes2$sex)
+ID <- "NA"
 
-pikesF$clust <- factor(pikesF$clust,
-                       levels = c("F_HighS","F_IntS","F_LowS"),
-                       labels = c("FW high S, thermal shift",
-                                  "FW resident, thermal shift",
-                                  "FW resident, thermal cold"))
+Newdata <- expand.grid(lifeyear=lifeyear, ecotype=ecotype, res_mean=res_mean, Sr_mean=Sr_mean, sex=sex, ID=ID)
+head(Newdata)
 
-pikesB$clust <- factor(pikesB$clust,
-                       levels = c("S_LowS","S_IntS","S_HighS"),
-                       labels = c("High S, thermal constant",
-                                  "Int. S, thermal cold",
-                                  "Low S, thermal shift"))
+Newdata$prediction <- 10^(predict(pikemodel.final, newdata = Newdata, allow.new.levels=TRUE))
 
-clustB <- ggplot(pikesB[pikesB$lifeyear<=7,], aes(factor(lifeyear), log(inc), color=clust))+
-  geom_boxplot(lwd=.3, outlier.shape = NA)+
-  labs(x="Age (years)", y=expression(bold("log increment"~(mu*"m"))),
+Newdata2 <- Newdata%>%
+  mutate(keep=case_when(ecotype=="FW_resident"&lifeyear<=max(pikes2[pikes2$ecotype=="FW_resident",]$lifeyear)~1,
+                   ecotype=="Anadromous"&lifeyear<=max(pikes2[pikes2$ecotype=="Anadromous",]$lifeyear)~1,
+                   ecotype=="BW-resident"&lifeyear<=max(pikes2[pikes2$ecotype=="BW-resident",]$lifeyear)~1,
+                   ecotype=="Trans-habitat"&lifeyear<=max(pikes2[pikes2$ecotype=="Trans-habitat",]$lifeyear)~1,
+                   TRUE~0))%>%
+           filter(keep==1)
+
+all_groups <- factor(c(unique(Newdata2$ecotype)))
+
+# Create ggplot with boxplots and custom position dodge 
+png(filename = "Figures/Ecotype_effects_growth_lifelong.png",width = 3000, height = 1500, res = 600)
+ggplot(Newdata2, aes(factor(lifeyear), prediction, fill=ecotype), alpha=0.6)+
+  geom_boxplot(lwd=.1, outlier.shape = NA, width=.5, position = position_dodge(width = NULL), color="black")+
+  labs(x="Age (years)", y=expression(bold("predicted increment"~(mu*"m"))),
        color="ecotype")+
-  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"))+
-  scale_color_viridis_d(direction = 1, begin = 0, end = 0.5)+
+  scale_x_discrete(limits=factor(c(1:11)),
+                   breaks=c("1","2","3","4","5","6","7","8","9","10","11"))+
+  scale_fill_manual(breaks = c("BW-resident","Anadromous","Trans-habitat","FW_resident"),
+                    values = mypalette1,
+                    labels = c("brackish resident type", "anadromous type","cross-habitat type", "freshwater resident type"))+
+  scale_fill_manual(breaks = c("BW-resident","Anadromous","Trans-habitat","FW_resident"),
+                    values = mypalette2,
+                    labels = c("brackish resident type", "anadromous type","cross-habitat type", "freshwater resident type"))+
   theme_classic()+
   theme(panel.grid.major = element_line(),
         legend.position = c(.715,.79),
@@ -3039,41 +3094,51 @@ clustB <- ggplot(pikesB[pikesB$lifeyear<=7,], aes(factor(lifeyear), log(inc), co
         axis.line = element_line(size = .5, colour = "black", linetype = 1),
         axis.ticks = element_line(size = .5, colour = "black"),
         axis.text = element_text(size = 10, colour = "black"),
-        axis.text.y = element_blank(),
+        axis.text.y = element_text(size = 10, face = "bold"),
         axis.title.x = element_text(size = 10, face = "bold"),
         axis.title.y = element_text(size = 10, face = "bold"),
         legend.text = element_text(size = 5),
         legend.title = element_text(size = 10, face = "bold"),
         legend.key.size = unit(.8,"line"))
+dev.off()
 
-clustF <- ggplot(pikesF[pikesF$lifeyear<=7,], aes(factor(lifeyear), log(inc), color=clust))+
-  geom_boxplot(lwd=.3, outlier.shape = NA)+
-  labs(x="Age (years)", y=expression(bold("increment"~(mu*"m"))), color="ecotype")+
-  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"))+
-  scale_color_viridis_d(direction = 1, begin = 0.5, end = 1)+
+ggplot(Newdata2[Newdata$lifeyear<=9,], aes(Sr_mean, prediction, color=as.factor(lifeyear)))+
+  stat_smooth(method = "lm", fill="gray", fullrange = T, lwd=.8)+
+  labs(x=expression(bold("scaled"~delta^18*"O"~("z-score"))), 
+       y=expression(bold("log increment"~(mu*"m"))),
+       color="ageclass")+
+  scale_color_viridis_d()+
   theme_classic()+
   theme(panel.grid.major = element_line(),
-        legend.position = c(.715,.79),
+        legend.position = c(.9,.9),
         legend.background = element_blank(),
         legend.box.background = element_rect(),
         axis.line = element_line(size = .5, colour = "black", linetype = 1),
         axis.ticks = element_line(size = .5, colour = "black"),
         axis.text = element_text(size = 10, colour = "black"),
-        axis.text.y = element_blank(),
-        axis.title.x = element_text(size = 10, face = "bold"),
-        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 10, face = "bold", 
+                                    margin = margin(t=10)),
+        axis.title.y = element_text(size = 10, face = "bold"),
         legend.text = element_text(size = 5),
         legend.title = element_text(size = 10, face = "bold"),
-        legend.key.size = unit(.8,"line"))
-
-Fig <- ggarrange(clustB, clustF, align = "h", labels = c("A", "B"), 
-                 label.x = .02, label.y = 1.05)+
-  theme(plot.margin = margin(.5,0,0,0,"cm"))
-
-png(filename = "Figures/Cluster_effects_growth.png", 
-    width = 4500, height = 2000, res = 600)
-annotate_figure(Fig, top = text_grob("Effects of ecotype on pike growth", color = "black", face = "bold", size = 15, vjust = 1, hjust = 1.1))
-dev.off()
+        legend.key.size = unit(.8,"line"))+
+  coord_cartesian(clip = "off")+
+  geom_segment(x=0, y=3.6, xend=2.5, yend=3.6, 
+               lineend = "butt", linejoin = "mitre",
+               size=2, arrow = arrow(length = unit(0.18, "inches")),
+               color="#66CCCC")+
+  annotation_custom(grob = text_grob(label = "cold", 
+                                     rot = 0, face = "bold", size = 10),
+                                     ymin=3.62, ymax=3.62,
+                                     xmin=0, xmax=2.5)+
+  geom_segment(x=0, y=3.6, xend=-2.5, yend=3.6, 
+               lineend = "butt", linejoin = "mitre",
+               size=2, arrow = arrow(length = unit(0.18, "inches")),
+               color="#FF6666")+
+  annotation_custom(grob = text_grob(label = "warm", 
+                                     rot = -0, face = "bold", size = 10),
+                                     ymin=3.62, ymax=3.62,
+                                     xmin=0, xmax=-2.5)
 ```
 
 ## VB growth models ecotypes
@@ -3081,17 +3146,10 @@ dev.off()
 rm(list = ls())
 
 # load data
-pikedata <- read.delim("Data/Pike/Pike_TL_backcalulated.txt", header = T, stringsAsFactors = F)
+pikedata <- read.delim("Data/Pike/Pikedata.txt", header = T, stringsAsFactors = F)
 
 priors <- read.delim("Data/Pike/Priors_pike.csv", sep = ";", 
                      header = T, stringsAsFactors = F)
-
-load("Data/Pike/Adults_element_transects_all.RData")
-
-Bgroup.clus <- Bgroup%>%inner_join(fishassign_B2, by="ID")
-Fgroup.clus <- Fgroup%>%inner_join(fishassign_F2, by="ID")
-
-Groupall <- rbind(Bgroup.clus, Fgroup.clus)
 
 Groups <- Groupall%>%
   ungroup()%>%
@@ -3101,8 +3159,7 @@ Groups <- Groupall%>%
                               clust2=="Low saline|cold"~3,
                               clust2=="FW high saline|shift"~4,
                               clust2=="FW low saline|shift"~5,
-                              clust2=="FW low saline|cold"~6
-                              ))%>%
+                              clust2=="FW low saline|cold"~6))%>%
   distinct() %>% 
   group_by(ecotype) %>% #Group by ecotype to number each group
   transmute(id = id,
@@ -3111,26 +3168,23 @@ Groups <- Groupall%>%
   ungroup()%>%
   mutate(id3 = row_number())
 
-
-#Filter out lake fish and vaterite fish
-pikedata2 <- pikedata %>% filter(area != "KD") %>% filter(id != "BH-01908")%>%
-  inner_join(Groups, by="id")
-
 # Cleanup
-growthdata <- pikedata2 %>%
-  transmute(id = id,
-            id3 = id3,
+growthdata <- pikedata %>%
+  transmute(ID = ID,
+            ID2=as.numeric(factor(ID)),
             sex = sex,
-            weight = weight,
-            TL = TL,
-            radmm = rad/1000,
-            date = date,
-            area = area,
+            weight_g = weight_g,
+            TL_mm = TL_mm,
+            rad_mm = rad_um/1000,
+            area = waterbody,
             age = age,
-            agei = agei,
-            ecotype=ecotype)
+            lifeyear = lifeyear,
+            ecotype=case_when(ecotype=="BW-resident"~1,
+                              ecotype=="FW_resident"~2,
+                              ecotype=="Anadromous"~3,
+                              ecotype=="Trans-habitat"~4))
 
-write.table(growthdata, file = "Pikedata.txt", row.names = F, sep = "\t", dec = ".")
+write.table(growthdata, file = "Data/Pike/Pikedata_Stan.txt", row.names = F, sep = "\t", dec = ".")
 
 #Binary variable for sex
 #growthdata$sex <- ifelse(growthdata$sex == "f", 0, 1)
@@ -3153,14 +3207,14 @@ write.table(growthdata, file = "Pikedata.txt", row.names = F, sep = "\t", dec = 
 # growthdata <- growthdata %>% left_join(IDall, by="id")
 
 standata_growth = list(
-  Radmm = growthdata$radmm, 
-  Agei = growthdata$agei,
+  Radmm = growthdata$rad_mm, 
+  Agei = growthdata$lifeyear,
   N = nrow(growthdata),
-  n_fish = as.integer(max(growthdata$id3)),
+  n_fish = as.integer(length(unique(pikedata$ID))),
   n_eco = as.integer(max(growthdata$ecotype)),
-  fish_id = as.integer(growthdata$id3))
-fishtable = unique(growthdata[, c("id3", "ecotype")])
-fishtable = fishtable[order(fishtable$id3), ]
+  fish_id = as.integer(growthdata$ID2))
+fishtable = unique(growthdata[, c("ID2", "ecotype")])
+fishtable = fishtable[order(fishtable$ID2), ]
 standata_growth$eco_id_fish = fishtable$ecotype
 
 standata_growth_2 = list(
@@ -3190,15 +3244,15 @@ stancode4 <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes_3_normal.stan")
 mod = stan_model(stancode, model_name = "Individual pike growth")
 
 #fitting
-fit = sampling(mod, iter = 10000, data = standata_growth, 
+fit = sampling(mod, iter = 5000, data = standata_growth, 
            control = list(adapt_delta = 0.95, 
                           max_treedepth = 14))
 
- #Investigate parameters of interest (Plausible range might be e.g., 
+#Investigate parameters of interest (Plausible range might be e.g., 
 #LInf = 2.5 - 3.5, k = 0.1 - 0.5, tZero = -0.1 - -0.6)
 print(fit,pars = c("LInf_eco","k_eco","tZero_eco","phi")) 
 print(fit,pars = c("alpha","beta")) 
-bayesplot::mcmc_hist(as.array(fit, pars = "phi"))
+bayesplot::mcmc_hist(as.array(fit, pars = "LInf_eco"))
 
 save(fit, file = "Data/Pike/Fit_individual_ecotypes_GM.RData")
 ```
