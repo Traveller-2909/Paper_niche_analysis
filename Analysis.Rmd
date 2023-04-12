@@ -32,6 +32,8 @@ library(flextable)
 library(gridGraphics)
 library(lubridate)
 library(factoextra)
+library(data.table)
+library(gridExtra)
 library(loo)
 library(bayesplot)
 library("rstan")
@@ -1888,7 +1890,7 @@ F1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|const",])+
         axis.title.y = element_text(size = 7, margin = margin(r=10), colour = "transparent"),
         axis.line = element_line(size = 0.3))+
   coord_cartesian(clip = "off")+
-  annotation_custom(grob = text_grob(label = "high saline, const (N=11)", size = 7),
+  annotation_custom(grob = text_grob(label = "high saline, constant (N=11)", size = 7),
                     ymin = 10, ymax = 10, xmin = 750, xmax = 750)
 
 A1 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW low saline|cold",])+
@@ -2019,7 +2021,7 @@ F2 <- ggplot(Fgroup.clus[Fgroup.clus$clust2=="FW high saline|const",])+
 
 allplot <- align_plots(A, B, C, D, E, F1, A1, B1, C1, D1, E1, F2, align = "hv")
 
-png(filename = "Figures/DTW-plots/Allplot_FW_midres.png", width = 6000, height = 2000, res = 600)
+png(filename = "Figures/DTW-plots/Allplot_FW_highres.png", width = 12000, height = 4000, res = 600)
 plot_grid(allplot[[1]], allplot[[2]], allplot[[3]], allplot[[4]], allplot[[5]], allplot[[6]], 
           allplot[[7]], allplot[[8]], allplot[[9]], allplot[[10]], allplot[[11]], allplot[[12]], nrow = 2, ncol = 6)
 dev.off()
@@ -3142,9 +3144,6 @@ rm(list = ls())
 # load data
 pikedata <- read.delim("Data/Pike/Pikedata.txt", header = T, stringsAsFactors = F)
 
-priors <- read.delim("Data/Pike/Priors_pike.csv", sep = ";", 
-                     header = T, stringsAsFactors = F)
-
 # Cleanup
 growthdata <- pikedata %>%
   transmute(ID = ID,
@@ -3165,106 +3164,126 @@ growthdata <- pikedata %>%
 
 write.table(growthdata, file = "Data/Pike/Pikedata_Stan.txt", row.names = F, sep = "\t", dec = ".")
 
-#Binary variable for sex
-#growthdata$sex <- ifelse(growthdata$sex == "f", 0, 1)
-
-# #ID2 variable
-# IDfemale <- growthdata %>% filter(sex==0)%>%
-#   transmute(id=id)%>%
-#   arrange(id)%>%
-#   distinct()
-# IDfemale$ID2 <- seq(1,nrow(IDfemale),1)
-# 
-# IDmale <- growthdata %>% filter(sex==1)%>%
-#   transmute(id=id)%>%
-#   arrange(id)%>%
-#   distinct()
-# IDmale$ID2 <- seq(1,nrow(IDmale),1)
-# 
-# IDall <- rbind(IDfemale, IDmale)
-# 
-# growthdata <- growthdata %>% left_join(IDall, by="id")
-
 standata_growth = list(
-  Radmm = growthdata$rad_mm, 
-  Agei = growthdata$lifeyear,
-  N = nrow(growthdata),
-  n_fish = as.integer(length(unique(pikedata$ID))),
-  n_eco = as.integer(max(growthdata$ecotype_num)),
-  fish_id = as.integer(growthdata$ID2))
+	Radmm = growthdata$rad_mm, 
+	Agei = growthdata$lifeyear,
+	N = nrow(growthdata),
+	n_fish = as.integer(max(growthdata$ID2)),
+	n_eco = as.integer(max(growthdata$ecotype_num)),
+	fish_id = as.integer(growthdata$ID2))
 fishtable = unique(growthdata[, c("ID2", "ecotype_num")])
 fishtable = fishtable[order(fishtable$ID2), ]
-standata_growth$eco_id_fish = fishtable$ecotype_num
+standata_growth$eco_id_fish = fishtable$ecotype
 
-standata_growth_2 = list(
-  Radmm = growthdata$radmm,
-  Agei = growthdata$agei,
-  N = nrow(growthdata),
-  n_fish = as.integer(max(growthdata$id3)),
-  n_eco = as.integer(max(growthdata$ecotype)),
-  fish_id = as.integer(growthdata$id3),
-  eco_id = as.integer(growthdata$ecotype)
-)
+#priors?
+init_fun = function() {
+	list(
+		LInf_i_raw = runif(86, -0.2, 0.2),
+		tZero_i_raw = runif(86, -0.2, 0.2),
+		k_i_raw = runif(86, -0.2, 0.2),
+		LInf_eco_raw = runif(6, -0.2, 0.2),
+		k_eco_raw = runif(6, -0.2, 0.2),
+		tZero_eco_raw = runif(6, -0.2, 0.2),
+		LInf = runif(1, 2, 4),
+		LInf_sig = runif(1, 0, 2),
+		k = runif(1, 0.05, 0.15),
+		k_sig = runif(1, 0, 0.1),
+		tZero = runif(1, -1.5, -0.1),
+		tZero_sig =  runif(1, 0, 0.5),
+		LInf_eco_sig = runif(6, 0.2, 2),
+		k_eco_sig = runif(6, 0, 0.1),
+		tZero_eco_sig = runif(6, 0.2, 2),
+		phi = runif(1, 0, 0.1)
+	)
+}
 ```
 
-```{r individual Growth analysis, include=FALSE, eval=FALSE}
-# Script to fit individual-level growth curve
-
-# all groups (now working)
-stancode <- ("Data/Stancode/Growth_model_hierarchical_ecotypes_normal_final.stan")
-# different grouping, similar to Höhne et al., no transformation
-stancode2 <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes_2.stan")
-# different grouping with transformation
-stancode3 <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes_3.stan")
-#normal priors
-stancode4 <- ("Data/Stancode/Growth_model_hierarchical4_ecotypes_3_normal.stan")
-
-
+```{r run model, include=FALSE, eval=FALSE}
+stancode <- ("Matt input/revised/growth_model_revised.stan")
 mod = stan_model(stancode, model_name = "Individual pike growth")
+fit = sampling(mod, iter = 20000, warmup = 10000, data = standata_growth, init = init_fun,
+			   control = list(adapt_delta = 0.995, max_treedepth = 20))
+saveRDS(fit, "Matt input/revised/revised_fit.rds")
 
-#fitting
-fit = sampling(mod, iter = 10000, data = standata_growth, 
-           control = list(adapt_delta = 0.95, 
-                          max_treedepth = 14))
-
-#Investigate parameters of interest (Plausible range might be e.g., 
-#LInf = 2.5 - 3.5, k = 0.1 - 0.5, tZero = -0.1 - -0.6)
-print(fit,pars = c("LInf_eco","k_eco","tZero_eco","phi")) 
-print(fit,pars = c("alpha","beta")) 
-bayesplot::mcmc_hist(as.array(fit, pars = "LInf_eco"))
-
-save(fit, file = "Data/Pike/Fit_individual_ecotypes_GM.RData")
+print(fit, pars = c("LInf_eco", "k_eco", "tZero_eco"))
 ```
 
-```{r playaround priors, include=FALSE, eval=FALSE}
-alpha = 0.3^2/0.005
-beta =  0.3/0.005
-## verify that the mean and variance are 40 and 25, as expected
-alpha / beta
-## 40
-alpha / beta^2
-## 25
+```{r individual plotting, include=FALSE, eval=FALSE}
+# Ectype codes: 1 = "Brackish resident"; 2 = "Freshwater resident"; 3 = "Anadromous"; 4 = "Cross-habitat"
 
-sim = rgamma(5000, alpha, beta)
-quantile(sim, c(0.025, 0.975))
+mypallette <- c("#004643","#C5D86D","#00BFB2","#F1C40F")
+mylabel <- c("Brackish resident","Freshwater resident","Anadromous","Cross-habitat")
 
-mean = mean(Pikeprior$Loo)
-var = sd(Pikeprior$Loo)
+pl_theme =	theme_classic() +
+	theme(panel.grid.major = element_line(),
+		  legend.box.background = element_rect(),
+		  axis.line = element_line(size = .5, colour = "black", linetype = 1),
+		  axis.ticks = element_line(size = .5, colour = "black"),
+		  axis.text = element_text(size = 10, colour = "black"),
+		  axis.text.y = element_text(size = 10, face = "bold"),
+		  axis.title.x = element_text(size = 10, face = "bold"),
+		  axis.title.y = element_text(size = 10, face = "bold"),
+		  legend.text = element_text(size = 5),
+		  legend.title = element_text(size = 5, face = "bold"),
+		  legend.key.size = unit(.5,"line"),
+		  legend.position = c(0.3,0.8))
 
-sim2 = rnorm(5000, mean, var)
-quantile(sim2, c(0.025, 0.975))
+Incpredict = function(pars, Agei) pars[1] * (1 - exp(-pars[2] * (Agei - pars[3])))
 
-#calculate own prior, upper max = 139, cv = cv of growth being between 0.1 and 0.15
+# x is a stanfit
+ecotype_predict = function(x, quants = c(0.5, 0.05, 0.95), names = c("median", "lower", "upper")) {
+	pars_eco = c("LInf_eco", "k_eco", "tZero_eco")
+	samps = as.matrix(x, pars = pars_eco)
 
-fit<-function(mn){
-  cv<-5
-  quant<-pnorm(139,mn,cv*mn)
-  diff<-(0.975-quant)^2
-  return(diff)
+	# list of 4 ecotypes
+	# each element is a matrix, 20000 rows (samples) by 15 age increments
+	eco_pr = lapply(0:3, \(i) t(apply(samps[, c(1, 5, 9) + i], 1, Incpredict, Agei = 1:15)))
+
+	# convert to a data table summarizing by quantiles
+	eco_q = lapply(eco_pr, \(x) {
+		res = data.frame(t(apply(x, 2, quantile, quants)))
+		colnames(res) = names
+		res$Agei = 1:15
+		res
+	})
+	rbindlist(eco_q, idcol = "eco_id")
 }
 
-res<-optim(100,fit,method="Brent",lower = 1, upper = 200)
+fish_predict = function(x, fish_lookup) {
+	pars_fish = c("LInf_i", "k_i", "tZero_i")
+	samps_f = as.matrix(x, pars = pars_fish)
+	fish_pr = lapply(0:119, \(i) t(apply(samps_f[, c(1, 121, 241) + i], 1, Incpredict, Agei = 1:15)))
+	fish_m = lapply(fish_pr, \(x) data.frame(fit = apply(x, 2, median), Agei = 1:15))
+	fish_plot = rbindlist(fish_m, idcol = "fish_id")	
+	fish_plot$eco_id = fish_lookup$ecotype_num[match(fish_plot$fish_id, fish_lookup$ID2)]
+	fish_plot
+}
 
+ecotype_curves = function(x, dat) {
+	fish_lookup = unique(dat[, c("ID2", "ecotype_num")])
+	fish_lookup = fish_lookup[order(fish_lookup$ID2),]
+	eco_plot = ecotype_predict(x)
+	fish_plot = fish_predict(x, fish_lookup)
+	
+	pl_curves = list()
+	for(i in 1:4) {
+		pl_curves[[i]] = ggplot(data = eco_plot[eco_id == i]) + 
+			geom_ribbon(aes(x = Agei, ymin = lower, ymax = upper), fill = mypallette[i], alpha = 0.5) + 
+			geom_line(aes(x = Agei, y = median), color = mypallette[i], size = 2) + 
+		  ggtitle(mylabel[i])+
+			geom_line(data = fish_plot[eco_id == i], aes(x = Agei, y = fit, group = fish_id), color = mypallette[i], size = 0.5, alpha = 0.3) + 
+			geom_point(data = dat[dat$ecotype_num == i, ], 
+					   aes(x = lifeyear, y = rad_mm, group = ID), size = 1, alpha = .9, color="black") + 
+		  ylim(0,3.5)+scale_x_continuous(breaks = c(1:15), labels = c(1:15))+
+			pl_theme + labs(x="Age", y="otolith increment (mm)")
+	}
+	pl_curves$nrow = 2
+	do.call(grid.arrange, pl_curves)
+}
+
+png(filename = "Figures/Individual_growth_revised.png", width = 5000, height = 5000, res = 600)
+ecotype_curves(fit, growthdata)
+dev.off()
 ```
 
 ```{r individual Growth analysis extract data, include=FALSE, eval=FALSE}
@@ -3324,190 +3343,6 @@ pairs(fit, pars = c("LInf1", "k1_mu", "k1_sig", "tZero1"))
 #Not ideal, maybe thin
 pairs(fit, pars = c("LInf2", "k2_mu", "k2_sig", "tZero2"))
 #same
-```
-
-```{r individual Growth analysis plotting, include=FALSE, eval=FALSE}
-#prediction function
-head(samples)
-
-Incpredict<- function(pars, Agei){
-  pars[1]*(1-exp(-pars[2]*(Agei-pars[3])))
-}
-
-Pred1 <- t(apply(samples[, c(1, 5, 9)], 1, Incpredict, Agei = 1:15))
-Pred2 <- t(apply(samples[, c(2, 6, 10)], 1, Incpredict, Agei = 1:15))
-Pred3 <- t(apply(samples[, c(3, 7, 11)], 1, Incpredict, Agei = 1:15))
-Pred4 <- t(apply(samples[, c(4, 8, 12)], 1, Incpredict, Agei = 1:15))
-
-#Make quantiles
-Quantile1 <- data.frame(t(apply(Pred1, 2, quantile, c(0.5, 0.05, 0.95))))
-colnames(Quantile1) <- c("median", "lower", "upper")
-Quantile1$Agei <- c(1:15)
-
-Quantile2 <- data.frame(t(apply(Pred2, 2, quantile, c(0.5, 0.05, 0.95))))
-colnames(Quantile2) <- c("median", "lower", "upper")
-Quantile2$Agei <- c(1:15)
-
-Quantile3 <- data.frame(t(apply(Pred3, 2, quantile, c(0.5, 0.05, 0.95))))
-colnames(Quantile3) <- c("median", "lower", "upper")
-Quantile3$Agei <- c(1:15)
-
-Quantile4 <- data.frame(t(apply(Pred4, 2, quantile, c(0.5, 0.05, 0.95))))
-colnames(Quantile4) <- c("median", "lower", "upper")
-Quantile4$Agei <- c(1:15)
-
-
-mypallette <- viridis::viridis(6, direction = 1)
-
-Brackish_VB <- ggplot() +
-  geom_ribbon(data = Quantile1, aes(x = Agei, ymin = lower, ymax = upper, fill = "High S, thermal shift (N=35)"),
-              alpha = 0.3)+
-  geom_line(data = Quantile1, aes(x = Agei, y = median, color = "High S, thermal shift (N=35)"), size=2)+
-  geom_ribbon(data = Quantile2, aes(x = Agei, ymin = lower, ymax = upper, fill = "Int. S, thermal cold (N=15)"),
-              alpha = 0.3)+
-  geom_line(data = Quantile2, aes(x = Agei, y = median, color = "Int. S, thermal cold (N=15)"), size=2)+
-  geom_ribbon(data = Quantile3, aes(x = Agei, ymin = lower, ymax = upper, fill = "Low S, thermal shift (N=19)"),
-              alpha = 0.3)+
-  geom_line(data = Quantile3, aes(x = Agei, y = median, color = "Low S, thermal shift (N=19)"), size=2)+
-  geom_ribbon(data = Quantile4, aes(x = Agei, ymin = lower, ymax = upper, fill = "Low S, thermal shift (N=19)"),
-              alpha = 0.3)+
-  geom_line(data = Quantile4, aes(x = Agei, y = median, color = "Low S, thermal shift (N=19)"), size=2)+
-  scale_color_manual(name = "Assigned cluster",
-                     labels = c("High S, thermal shift (N=35)","Int. S, thermal cold (N=15)","Low S, thermal shift (N=19)"),
-                     values = c(mypallette[1], mypallette[2], mypallette[3]))+
-  scale_fill_manual(name = "Assigned cluster",
-                    labels = c("High S, thermal shift (N=35)","Int. S, thermal cold (N=15)","Low S, thermal shift (N=19)"),
-                    values = c(mypallette[1], mypallette[2], mypallette[3]))+
-  geom_point(data = growthdata[growthdata$ecotype==1|
-                                 growthdata$ecotype==2|
-                                 growthdata$ecotype==3,], aes(x=agei,y=radmm, group=id), size=1, alpha=.9, color="black")+
-  theme_classic()+
-  labs(x="Age", y="otolith increment (mm)")+
-    theme(panel.grid.major = element_line(),
-        legend.box.background = element_rect(),
-        axis.line = element_line(size = .5, colour = "black", linetype = 1),
-        axis.ticks = element_line(size = .5, colour = "black"),
-        axis.text = element_text(size = 10, colour = "black"),
-        axis.text.y = element_text(size = 10, face = "bold"),
-        axis.title.x = element_text(size = 10, face = "bold"),
-        axis.title.y = element_text(size = 10, face = "bold"),
-        legend.text = element_text(size = 5),
-        legend.title = element_text(size = 5, face = "bold"),
-        legend.key.size = unit(.5,"line"),
-        legend.position = c(0.3,0.8))
-
-Fresh_VB <- ggplot() +
-  geom_ribbon(data = Quantile4, aes(x = Agei, ymin = lower, ymax = upper, fill = "FW high S, thermal shift (N=9)"),
-              alpha = 0.3)+
-  geom_line(data = Quantile4, aes(x = Agei, y = median, color = "FW high S, thermal shift (N=9)"), size=2)+
-  geom_ribbon(data = Quantile5, aes(x = Agei, ymin = lower, ymax = upper, fill = "FW resident, thermal cold (N=4)"),
-              alpha = 0.3)+
-  geom_line(data = Quantile5, aes(x = Agei, y = median, color = "FW resident, thermal cold (N=4)"), size=2)+
-  geom_ribbon(data = Quantile6, aes(x = Agei, ymin = lower, ymax = upper, fill = "FW resident, thermal shift (N=4)"),
-              alpha = 0.3)+
-  geom_line(data = Quantile6, aes(x = Agei, y = median, color = "FW resident, thermal shift (N=4)"), size=2)+
-  scale_color_manual(name = "Assigned cluster",
-                     labels = c("FW high S, thermal shift (N=9)","FW resident, thermal cold (N=4)","FW resident, thermal shift (N=4)"),
-                     values = c(mypallette[4], mypallette[5], mypallette[6]))+
-  scale_fill_manual(name = "Assigned cluster",
-                    labels = c("FW high S, thermal shift (N=9)","FW resident, thermal cold (N=4)","FW resident, thermal shift (N=4)"),
-                    values = c(mypallette[4], mypallette[5], mypallette[6]))+
-  geom_point(data = growthdata[growthdata$ecotype==4|
-                                 growthdata$ecotype==5|
-                                 growthdata$ecotype==6,], aes(x=agei,y=radmm, group=id), size=1, alpha=.9, color="black")+
-  theme_classic()+
-  labs(x="Age", y="otolith increment (mm)")+
-    theme(panel.grid.major = element_line(),
-        legend.box.background = element_rect(),
-        axis.line = element_line(size = .5, colour = "black", linetype = 1),
-        axis.ticks = element_line(size = .5, colour = "black"),
-        axis.text = element_text(size = 10, colour = "black"),
-        axis.text.y = element_text(size = 10, face = "bold"),
-        axis.title.x = element_text(size = 10, face = "bold"),
-        axis.title.y = element_text(size = 10, face = "bold"),
-        legend.text = element_text(size = 5),
-        legend.title = element_text(size = 5, face = "bold"),
-        legend.key.size = unit(.5,"line"),
-        legend.position = c(0.3,0.8))
-
-Fig <- ggarrange(Brackish_VB, Fresh_VB, align = "h", labels = c("A", "B"), 
-                 label.x = .02, label.y = 1.05)
-
-png(filename = "Figures/VB-curves-ecotypes-withpoints.png", 
-    width = 4500, height = 2000, res = 600)
-annotate_figure(Fig, top = text_grob("Lifelong growth of pike ecotypes", 
-                                     color = "black", face = "bold", size = 15, vjust = 1.1, hjust = 1))
-dev.off()
-```
-
-```{r stable isotope data}
-rm(list = ls())
-
-#read in pike data
-Pikedata <- read.delim("Data/Pike/Pikedata_model.txt", header = T, stringsAsFactors = F, sep = "\t", dec = ".")
-
-#read in isotope data
-SIdata <- read.delim("Data/Pike/2022-09-08_NCS_TRittweg_Results_clean.txt", header = T, stringsAsFactors = F, sep = "\t", dec = ".")
-
-SIdata.clean <- SIdata%>%
-  group_by(Identifier.1)%>%
-  summarise(ID=Identifier.1,
-            d15N=mean(d.15N.14N.Calculated, na.rm=T),
-            d13C=mean(d.13C.12C.Calculated, na.rm=T),
-            d34S=mean(d.34S.32S.Calculated, na.rm=T),
-            TN=mean(N.., na.rm=T),
-            TC=mean(C.., na.rm=T),
-            TS=mean(S.., na.rm=T))%>%
-  distinct()
-
-PikeSI <- Pikedata%>%inner_join(SIdata.clean, by="ID")%>%
-  transmute(ID=ID,
-            waterbody=waterbody,
-            age=as.factor(lifeyear),
-            agefact=as.factor(agefact2),
-            d15N=d15N,
-            d13C=d13C,
-            d34S=d34S,
-            TN=TN,
-            TC=TC,
-            TS=TS,
-            clust=clust)%>%
-  distinct()
-
-Carbon <- ggplot(PikeSI, aes(d15N, d34S, color=waterbody))+geom_point()+theme_minimal()+
-  stat_ellipse(aes(fill = waterbody, color = waterbody), alpha = 0.2, level = 0.95, geom = "polygon")+
-  scale_color_viridis_d(direction = -1)+
-  scale_fill_viridis_d(direction = -1)+
-  theme(panel.background = element_blank(), panel.grid.major = element_line(colour = "grey", size = 0.5),
-        axis.line = element_line(size = 1, colour = "black", linetype = 1), 
-        axis.title.y = element_text(size = 15),
-        axis.ticks= element_line(size = 2), axis.text.y = element_text(size = 15, colour = "black"),
-        axis.text.x = element_text(size = 15, colour = "black"), axis.ticks.x = element_line(size = 2), 
-        axis.title.x = element_text(size = 15, colour = "black"))+
-  xlab(expression(atop(delta^15*"N")))+ 
-  ylab(expression(atop(delta^13*"C")))
-
-Sulphur <- ggplot(PikeSI, aes(d15N, d34S, color=waterbody))+geom_point()+theme_minimal()+
-  stat_ellipse(aes(fill = waterbody, color = waterbody), alpha = 0.2, level = 0.95, geom = "polygon")+
-  scale_color_viridis_d(direction = -1)+
-  scale_fill_viridis_d(direction = -1)+
-  theme(panel.background = element_blank(), panel.grid.major = element_line(colour = "grey", size = 0.5),
-        axis.line = element_line(size = 1, colour = "black", linetype = 1), 
-        axis.title.y = element_text(size = 15),
-        axis.ticks= element_line(size = 2), axis.text.y = element_text(size = 15, colour = "black"),
-        axis.text.x = element_text(size = 15, colour = "black"), axis.ticks.x = element_line(size = 2), 
-        axis.title.x = element_text(size = 15, colour = "black"))+
-  xlab(expression(atop(delta^15*"N")))+ 
-  ylab(expression(atop(delta^34*"S")))
-
-Fig <- ggarrange(Carbon, Sulphur, align = "h", labels = c("A", "B"), 
-                 label.x = .1, label.y = 1.05, common.legend = T, legend = "bottom")
-
-png(filename = "Figures/SI-vlues_ecotypes.png", 
-    width = 4500, height = 2000, res = 600)
-annotate_figure(Fig, top = text_grob("SI signature of pike ecotypes", 
-                                     color = "black", face = "bold", size = 15, vjust = 0.8, hjust = 1))
-dev.off()
 ```
 
 #Partitional clustering
@@ -3741,7 +3576,24 @@ Data <- geneticsdata%>%
             cluster2=V7,
             cluster3=V8,
             cluster4=V9)
+  
+Data <- Data %>% 
+  mutate(highest_cluster = apply(Data[, 2:5], 1, which.max)) %>% 
+  mutate(highest_cluster = paste0("cluster", highest_cluster))
+
+Otodata <- read.delim("Data/Pike/Pikedata_model.txt", header = T, stringsAsFactors = F, sep = "\t", dec = ".")
+Otoclusters <- Otodata%>%
+  transmute(ID=ID,
+            clust=clust,
+            ecotype=ecotype)%>%
+  distinct()
+
+Otogen <- Data%>%left_join(Otoclusters, by="ID")%>%
+  drop_na()
+
+hist(Otogen$cluster3)
 
 
+ggplot(Otogen, aes(highest_cluster, clust))+geom_point(position =position_jitter(width = 0.02))
 ```
 
