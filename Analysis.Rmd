@@ -49,7 +49,7 @@ Five fish excluded:
 "BH-90962" -> Lost,
 "BH-93190" -> no SIMS transect
 ## Color codes ecotypes
-"#004643" --> brackish resident,"#00BFB2" --> anadromous,"#F1C40F" --> cross-habitat,"#C5D86D" --> frehwater resident,
+"#004643" --> brackish resident,"#00BFB2" --> anadromous,"#F1C40F" --> cross-habitat,"#C5D86D" --> freshwater resident,
 "#AF3800" --> unknown
 
 
@@ -1708,7 +1708,7 @@ C1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW int saline|cold",])+
   theme(legend.position = "none", 
         panel.grid.major.y = element_line(size = .3),
         panel.border = element_rect(fill = NA, size = .3),
-        plot.margin = margin(c(20,10,1,1)),
+        plot.margin = margin(c(-10,10,1,1)),
         axis.text.x = element_text(color = "black", size = 7),
         axis.text.y = element_text(color = "white", size = 7),
         axis.ticks.y = element_line(size = 0.3, colour = "transparent"),
@@ -1739,7 +1739,7 @@ D1 <- ggplot(Bgroup.clus[Bgroup.clus$clust2=="BW Low saline|shift",])+
         axis.line = element_line(size = 0.3))+
   coord_cartesian(clip = "off")
 
-allplot <- align_plots(A, B, C, D, A1, B1, C1, D1, align = "hv")
+allplot <- align_plots(A, B, C, D, A1, B1, C1, D1, align = "hv", padding = 0.5, axis = "tblr")
 
 png(filename = "Figures/DTW-plots/Allplot_midres.png", width = 4000, height = 2000, res = 600)
 plot_grid(allplot[[1]],allplot[[2]],allplot[[3]],allplot[[4]], allplot[[5]], allplot[[6]], allplot[[7]], allplot[[8]], nrow = 2, ncol = 4)
@@ -2910,7 +2910,8 @@ pikemodel.final <- lmer(log10(inc_um)~res_mean+lifeyear*ecotype+I(lifeyear^2)+Sr
                     REML = T, data = pikes2)
 
 summary(pikemodel.final)
-tab_model(pikemodel.final, show.fstat = T, show.loglik = T, digits.re = 20)
+tab_model(pikemodel.final, show.fstat = T, show.loglik = T, digits.re = 20, show.re.var = T)
+sd(resid(pikemodel.final))
 ```
 
 ## Model validation
@@ -3577,23 +3578,97 @@ Data <- geneticsdata%>%
             cluster3=V8,
             cluster4=V9)
   
-Data <- Data %>% 
-  mutate(highest_cluster = apply(Data[, 2:5], 1, which.max)) %>% 
-  mutate(highest_cluster = paste0("cluster", highest_cluster))
 
-Otodata <- read.delim("Data/Pike/Pikedata_model.txt", header = T, stringsAsFactors = F, sep = "\t", dec = ".")
+Otodata <- read.delim("Data/Pike/Pikedata.txt", header = T, stringsAsFactors = F, sep = "\t", dec = ".")
 Otoclusters <- Otodata%>%
   transmute(ID=ID,
             clust=clust,
-            ecotype=ecotype)%>%
+            ecotype=ecotype,
+            waterbody=capt)%>%
   distinct()
 
 Otogen <- Data%>%left_join(Otoclusters, by="ID")%>%
   drop_na()
 
-hist(Otogen$cluster3)
+new_df <- Otogen %>%
+  pivot_longer(cols = starts_with("cluster"), 
+               names_to = "cluster", 
+               values_to = "value")
 
+ggplot(new_df, aes(x = cluster, y = value, color = ecotype)) +
+  geom_count() +
+  labs(title = "Frequency of Cluster Values by Ecotype",
+       x = "Cluster",
+       y = "Value")
 
-ggplot(Otogen, aes(highest_cluster, clust))+geom_point(position =position_jitter(width = 0.02))
+# Reshape the data frame to long format
+df_long <- pivot_longer(Otogen, -c(ID, ecotype, clust, waterbody), names_to = "cluster", values_to = "prob")
+
+# Calculate total probability for each ecotype
+df_total <- aggregate(prob ~ ecotype, df_long, sum)
+
+# Merge total probability with original data frame
+df_long <- merge(df_long, df_total, by = "ecotype")
+
+# Calculate proportion for each cluster and ecotype
+df_long$prop <- df_long$prob.x / df_long$`prob.y`
+
+# Filter data for ecotype "A"
+df_F <- subset(df_long, ecotype == "FW_resident")
+df_A <- subset(df_long, ecotype == "Anadromous")
+df_T <- subset(df_long, ecotype == "Trans-habitat")
+df_B <- subset(df_long, ecotype == "BW-resident")
+
+pl_theme =	theme_classic() +
+	theme(panel.grid.major = element_line(),
+		  legend.box.background = element_rect(),
+		  axis.line = element_line(size = .5, colour = "black", linetype = 1),
+		  axis.ticks = element_line(size = .5, colour = "black"),
+		  axis.text = element_text(size = 10, colour = "black"),
+		  legend.text = element_text(size = 10),
+		  axis.title.x = element_blank(),
+		  plot.title = element_text(size = 10, colour = "black"),
+		  legend.position = "none")
+
+# Create stacked bar chart with proportions
+FW <- ggplot(df_F, aes(x = cluster, y = prob.x, fill = cluster)) +
+  geom_boxplot()+
+  stat_summary(fun=mean, geom="point", shape=18, size=5, color="red", fill="red")+
+  labs(title = "Freshwater resident ecotype", x = "Cluster", y = "Proportion")+
+  ylim(0,1)+
+  scale_fill_manual(values = c("#00BFB2", "#C5D86D", "#F1C40F", "#004643"))+
+  theme_bw()+
+  pl_theme
+
+Ana <- ggplot(df_A, aes(x = cluster, y = prob.x, fill = cluster)) +
+  geom_boxplot() +
+  stat_summary(fun=mean, geom="point", shape=18, size=5, color="red", fill="red")+
+  labs(title = "Anadromous ecotype", x = "Cluster", y = "Proportion") +
+  ylim(0,1)+
+  scale_fill_manual(values = c("#00BFB2", "#C5D86D", "#F1C40F", "#004643"))+
+  theme_bw()+
+  pl_theme
+
+Cross <- ggplot(df_T, aes(x = cluster, y = prob.x, fill = cluster)) +
+  geom_boxplot() +
+  stat_summary(fun=mean, geom="point", shape=18, size=5, color="red", fill="red")+
+  labs(title = "Cross-habitat ecotype", x = "Cluster", y = "Proportion") +
+  ylim(0,1)+
+  scale_fill_manual(values = c("#00BFB2", "#C5D86D", "#F1C40F", "#004643"))+
+  theme_bw()+
+  pl_theme
+
+BW <- ggplot(df_B, aes(x = cluster, y = prob.x, fill = cluster)) +
+  geom_boxplot() +
+  stat_summary(fun=mean, geom="point", shape=18, size=5, color="red", fill="red")+
+  labs(title = "Brackish resident ecotype", x = "Cluster", y = "Proportion") +
+  ylim(0,1)+
+  scale_fill_manual(values = c("#00BFB2", "#C5D86D", "#F1C40F", "#004643"))+
+  theme_bw()+
+  pl_theme
+  
+png(filename = "Figures/Ecotypes_genetic_clusters.png", width = 5000, height = 5000, res = 600)
+grid.arrange(FW, Ana, Cross, BW)
+dev.off()
 ```
 
